@@ -159,7 +159,7 @@ const compareVersions = (left, right) => {
   return 0;
 };
 
-export function getAnswer(question, targetVersion) {
+export function getAnswer(question, targetVersion, fromVersion = targetVersion) {
   const normalized = question.toLowerCase();
   const answer = ANSWERS.find((item) => item.matches.some((match) => normalized.includes(match)));
   if (!answer) {
@@ -169,6 +169,9 @@ export function getAnswer(question, targetVersion) {
     };
   }
   let text = answer.text;
+  if (answer.id === "flutter-2-migration" && fromVersion !== targetVersion) {
+    text = `Migration context: Flutter ${fromVersion} → Flutter ${targetVersion}.\n\n${text}`;
+  }
   if (answer.id === "material-3" && compareVersions(targetVersion, "3.16") < 0) {
     text = "Material 3 became the default in Flutter 3.16, which is newer than your selected target. On a target before 3.16, Material 3 is not the default; check the migration guide if you opt in explicitly.\n\n" + text;
   }
@@ -179,7 +182,12 @@ export function findMigrations(pubspec, widgetCode, fromVersion, toVersion) {
   const combined = `${pubspec}\n${widgetCode}`;
   const found = MIGRATIONS.filter((migration) => migration.pattern.test(combined))
     .filter((migration) => compareVersions(toVersion, migration.minTarget) >= 0)
-    .map((migration) => ({ ...migration }));
+    .map((migration) => ({
+      ...migration,
+      status: compareVersions(fromVersion, migration.minTarget) < 0
+        ? "introduced within this upgrade"
+        : "already relevant at source version"
+    }));
   const sdkMatch = pubspec.match(/^\s*sdk\s*:\s*['"]?([^'"\r\n]+)['"]?/m);
   const findings = found.map((item) => ({ ...item, category: "api" }));
   if (sdkMatch && /<\s*3(?:\.0)?(?:\.0)?\b/.test(sdkMatch[1]) && compareVersions(toVersion, "3.0") >= 0) {
@@ -224,7 +232,7 @@ function renderCitations(container, sourceIds) {
   });
 }
 
-function renderAnswer(result, targetVersion) {
+function renderAnswer(result, fromVersion, targetVersion) {
   const card = document.querySelector("#answer-card");
   const body = document.querySelector("#answer-body");
   const paragraphs = result.text.split(/\n{2,}/);
@@ -234,7 +242,9 @@ function renderAnswer(result, targetVersion) {
     paragraph.textContent = text;
     body.append(paragraph);
   });
-  document.querySelector("#answer-version").textContent = `Answer · Flutter ${targetVersion}`;
+  document.querySelector("#answer-version").textContent = fromVersion === targetVersion
+    ? `Answer · Flutter ${targetVersion}`
+    : `Answer · Flutter ${fromVersion} → ${targetVersion}`;
   renderCitations(document.querySelector("#answer-citations"), result.sources);
   card.classList.remove("hidden");
   card.scrollIntoView({ behavior: "smooth", block: "nearest" });
@@ -268,7 +278,7 @@ function renderMigrations(findings, toVersion) {
     label.textContent = finding.title;
     const version = document.createElement("span");
     version.className = "version-tag";
-    version.textContent = finding.version;
+    version.textContent = finding.status ? `${finding.version} · ${finding.status}` : finding.version;
     title.append(label, version);
     const replacement = document.createElement("span");
     replacement.className = "replacement";
@@ -308,7 +318,9 @@ function startApp() {
       questionInput.focus();
       return;
     }
-    renderAnswer(getAnswer(question, document.querySelector("#target-version").value), document.querySelector("#target-version").value);
+    const fromVersion = document.querySelector("#flutter-version").value;
+    const targetVersion = document.querySelector("#target-version").value;
+    renderAnswer(getAnswer(question, targetVersion, fromVersion), fromVersion, targetVersion);
   });
   questionInput.addEventListener("keydown", (event) => {
     if (event.key === "Enter" && !event.shiftKey) {

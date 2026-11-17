@@ -13,6 +13,11 @@ test("Material 3 answer distinguishes targets before the default change", () => 
   assert.match(answer.text, /newer than your selected target/);
 });
 
+test("migration answer states the selected source and target SDKs", () => {
+  const answer = getAnswer("Our Flutter 2.10 app uses old APIs", "3.50", "2.10");
+  assert.match(answer.text, /Flutter 2\.10 → Flutter 3\.50/);
+});
+
 test("migration map detects APIs, SDK/package risks, and the Flutter 3.50 design-library change", () => {
   const findings = findMigrations(
     "environment:\n  sdk: '>=2.16.0 <3.0.0'\ndependencies:\n  flutter:\n    sdk: flutter\n  provider: ^5.0.0",
@@ -28,6 +33,17 @@ test("migration map detects APIs, SDK/package risks, and the Flutter 3.50 design
     "package-compatibility"
   ]);
   assert.equal(findings.find(({ id }) => id === "will-pop-scope").replacement, "PopScope");
+});
+
+test("migration map distinguishes changes already present from changes in the upgrade", () => {
+  const findings = findMigrations(
+    "",
+    "WillPopScope(child: child)\nimport 'package:flutter/material.dart';",
+    "3.16",
+    "3.50"
+  );
+  assert.equal(findings.find(({ id }) => id === "will-pop-scope").status, "already relevant at source version");
+  assert.equal(findings.find(({ id }) => id === "material-library-import").status, "introduced within this upgrade");
 });
 
 test("migration map does not report changes newer than the selected target", () => {

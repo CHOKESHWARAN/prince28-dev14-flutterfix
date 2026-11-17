@@ -33,7 +33,7 @@
         <button class="recent-question" type="button" data-question="What changed when Material 3 became the default in Flutter?"><span>◷</span> Material 3 defaults</button>
         <button class="recent-question" type="button" data-question="Our Flutter 2.10 app uses FlatButton, RaisedButton and WillPopScope. What should we change?"><span>◷</span> Flutter 2 migration</button>
         <div class="sidebar-bottom">
-          <div class="docs-status"><span class="status-dot"></span><span>Curated official docs<small>Flutter · Dart · migrations</small></span></div>
+          <div class="docs-status"><span class="status-dot" id="corpus-dot"></span><span id="corpus-label">Checking official docs…<small id="corpus-detail">Flutter · Dart · API references</small></span></div>
           <a class="sidebar-link" href="https://docs.flutter.dev/release/breaking-changes" target="_blank" rel="noreferrer">Breaking changes index <span>↗</span></a>
           <div class="profile">
             <div class="avatar">CM</div>
@@ -47,7 +47,7 @@
         <header class="topbar">
           <div class="breadcrumbs"><span>Workspace</span><span class="crumb-slash">/</span><strong id="breadcrumb-view">Mentor</strong></div>
           <div class="topbar-right">
-            <span class="docs-freshness"><span class="status-dot"></span> Docs checked <span id="docs-date">Nov 2026</span></span>
+            <span class="docs-freshness"><span class="status-dot" id="freshness-dot"></span> <span id="docs-date">Checking docs…</span></span>
             <button class="icon-button" type="button" aria-label="Help" title="FlutterFix uses official Flutter and Dart documentation">?</button>
           </div>
         </header>
@@ -86,13 +86,13 @@
           <section class="question-section" aria-labelledby="question-title">
             <div class="section-heading">
               <div><h2 id="question-title">What are you working on?</h2><p>Ask a question or choose a common topic to get started.</p></div>
-              <span class="source-pill"><span>✳</span> Official sources only</span>
+              <span class="source-pill"><span>✳</span> Official documentation retrieval</span>
             </div>
             <div class="composer">
               <label class="sr-only" for="question-input">Ask FlutterFix a question</label>
               <textarea id="question-input" rows="3" placeholder="e.g. What replaces WillPopScope in Flutter 3.50?"></textarea>
               <div class="composer-footer">
-                <span class="composer-hint"><span class="sparkle">✳</span> Answers include citations to the original docs</span>
+                <span class="composer-hint"><span class="sparkle">✳</span> Retrieved passages link to their original source</span>
                 <button class="primary-button" id="ask-button" type="button">Ask FlutterFix <span>↗</span></button>
               </div>
             </div>
@@ -115,14 +115,14 @@
             <div class="feature-copy"><strong>Planning an upgrade?</strong><span>Paste your pubspec and widget code to map deprecated APIs to their replacements.</span></div>
             <button class="text-button" type="button" data-open-view="migration">Open migration map <span>→</span></button>
           </section>
-          <footer class="content-footer">FlutterFix cites official documentation. Always run <code>flutter analyze</code> and tests against your project’s target SDK.</footer>
+          <footer class="content-footer">Retrieved Flutter passages are licensed under <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noreferrer">CC BY 4.0</a> (Flutter marks excluded); Dart pages have their own terms. Source pages are linked above. Always run <code>flutter analyze</code> and tests against your project’s target SDK.</footer>
         </section>
 
         <section class="view-panel hidden" id="migration-view">
           <div class="migration-intro">
             <div class="eyebrow"><span class="eyebrow-line"></span> VERSION-AWARE UPGRADE PLANNER</div>
             <h1>Your migration, <span>mapped.</span></h1>
-            <p>Paste your package manifest and widget code. FlutterFix finds known API changes and links each one to its official guide.</p>
+            <p>Paste your package manifest and widget code. FlutterFix finds known API changes and retrieves related official migration guidance.</p>
           </div>
           <div class="migration-version-row">
             <label class="version-select">
@@ -155,13 +155,20 @@
               <textarea id="widget-input" spellcheck="false" placeholder="Paste a Dart widget or source file here..."></textarea>
             </label>
           </div>
-          <div class="map-actions"><p><span class="info-icon">i</span> Analysis is local to this page. Pasted code is not uploaded.</p><button class="primary-button" id="map-button" type="button">Find migration changes <span>→</span></button></div>
+          <div class="map-actions">
+            <p><span class="info-icon">i</span> Source is sent only to this FlutterFix server. Don’t paste credentials.</p>
+            <div class="map-action-buttons">
+              <button class="secondary-button" id="analyze-button" type="button">Analyze widget on target SDK</button>
+              <button class="primary-button" id="map-button" type="button">Find migration changes <span>→</span></button>
+            </div>
+          </div>
+          <div class="analyzer-result hidden" id="analyzer-result" aria-live="polite"></div>
           <section class="map-results hidden" id="map-results" aria-live="polite">
             <div class="results-heading"><div><span class="eyebrow">MIGRATION MAP</span><h2 id="map-result-title">Changes found</h2></div><span class="results-count" id="results-count"></span></div>
             <ol class="migration-list" id="migration-list"></ol>
             <div class="map-next-steps"><strong>Next steps</strong><p>Resolve SDK and package constraints first, then migrate APIs. Re-run <code>flutter analyze</code>, review visual changes, and run tests on the target SDK. This map is a source-guided checklist, not a build or analyzer result.</p></div>
           </section>
-          <footer class="content-footer">Detection covers known APIs in the indexed migration guides; it cannot establish package compatibility or identify every project-specific change.</footer>
+          <footer class="content-footer">Detection covers indexed migration patterns. SDK analysis checks only the supplied widget in an isolated temporary package; it does not analyze your full app or package dependencies. Retrieved Flutter passages are licensed under <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noreferrer">CC BY 4.0</a> (Flutter marks excluded); Dart pages have their own terms. Source pages are linked above.</footer>
         </section>
       </main>
     </div>

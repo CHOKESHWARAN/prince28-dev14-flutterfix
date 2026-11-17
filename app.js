@@ -232,25 +232,59 @@ function renderCitations(container, sourceIds) {
   });
 }
 
+function appendSourceLink(container, title, url) {
+  const link = document.createElement("a");
+  link.href = url;
+  link.target = "_blank";
+  link.rel = "noreferrer";
+  link.textContent = `${title} ↗`;
+  container.append(link);
+}
+
 function renderAnswer(result, fromVersion, targetVersion) {
   const card = document.querySelector("#answer-card");
   const body = document.querySelector("#answer-body");
-  const paragraphs = result.text.split(/\n{2,}/);
   body.replaceChildren();
-  paragraphs.forEach((text) => {
-    const paragraph = document.createElement("p");
-    paragraph.textContent = text;
-    body.append(paragraph);
-  });
+  const disclaimer = document.createElement("p");
+  disclaimer.className = "answer-disclaimer";
+  disclaimer.textContent = result.answer;
+  body.append(disclaimer);
+  for (const resultItem of result.results ?? []) {
+    const section = document.createElement("section");
+    section.className = "answer-result";
+    const heading = document.createElement("h3");
+    heading.textContent = resultItem.title;
+    const passage = document.createElement("p");
+    passage.textContent = resultItem.passage;
+    section.append(heading, passage);
+    if (resultItem.temporalNote) {
+      const versionNote = document.createElement("p");
+      versionNote.className = "answer-disclaimer";
+      versionNote.textContent = resultItem.temporalNote;
+      section.append(versionNote);
+    }
+    appendSourceLink(section, `Read ${resultItem.source} · ${resultItem.title}`, resultItem.url);
+    body.append(section);
+  }
   document.querySelector("#answer-version").textContent = fromVersion === targetVersion
     ? `Answer · Flutter ${targetVersion}`
     : `Answer · Flutter ${fromVersion} → ${targetVersion}`;
-  renderCitations(document.querySelector("#answer-citations"), result.sources);
+  const citations = document.querySelector("#answer-citations");
+  citations.replaceChildren();
+  for (const resultItem of result.results ?? []) {
+    appendSourceLink(citations, resultItem.title, resultItem.url);
+  }
+  if (!result.results?.length) {
+    const note = document.createElement("span");
+    note.textContent = result.warning ?? "No indexed source passages found.";
+    citations.append(note);
+  }
   card.classList.remove("hidden");
   card.scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 
-function renderMigrations(findings, toVersion) {
+function renderMigrations(payload) {
+  const { findings, targetVersion } = payload;
   const result = document.querySelector("#map-results");
   const list = document.querySelector("#migration-list");
   list.replaceChildren();
@@ -285,18 +319,68 @@ function renderMigrations(findings, toVersion) {
     replacement.textContent = `→ ${finding.replacement}`;
     const details = document.createElement("p");
     details.textContent = finding.details;
-    const source = SOURCES[finding.source];
-    const link = document.createElement("a");
-    link.href = source.url;
-    link.target = "_blank";
-    link.rel = "noreferrer";
-    link.textContent = `Read ${source.title} ↗`;
-    content.append(title, replacement, details, link);
+    content.append(title, replacement, details);
+    const matchedSources = payload.sources?.find((entry) => entry.finding === finding.id)?.sources ?? [];
+    if (matchedSources.length) {
+      matchedSources.forEach((source) => {
+        appendSourceLink(content, `Read ${source.title}`, source.url);
+        const excerpt = document.createElement("p");
+        excerpt.textContent = source.passage;
+        content.append(excerpt);
+      });
+    } else if (SOURCES[finding.source]) {
+      const source = SOURCES[finding.source];
+      appendSourceLink(content, `Read ${source.title}`, source.url);
+    }
     item.append(number, content);
     list.append(item);
   });
-  result.dataset.targetVersion = toVersion;
+  result.dataset.targetVersion = targetVersion;
   result.classList.remove("hidden");
+}
+
+async function postJson(path, payload) {
+  const response = await fetch(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+  const result = await response.json();
+  if (!response.ok && !(path === "/api/analyze" && response.status === 422)) {
+    throw new Error(result.error ?? `Request failed with status ${response.status}.`);
+  }
+  return result;
+}
+
+async function refreshDocsStatus() {
+  const label = document.querySelector("#corpus-label");
+  const detail = document.querySelector("#corpus-detail");
+  try {
+    const response = await fetch("/api/status");
+    if (!response.ok) throw new Error(`Status request failed with ${response.status}.`);
+    const status = await response.json();
+    const corpus = status.corpus;
+    if (!corpus.indexed) {
+      label.firstChild.textContent = "Docs not indexed";
+      detail.textContent = "Run npm run docs:sync";
+      document.querySelector("#docs-date").textContent = "Not indexed";
+      document.querySelector("#corpus-dot").classList.add("status-dot-offline");
+      document.querySelector("#freshness-dot").classList.add("status-dot-offline");
+      return;
+    }
+    label.firstChild.textContent = `${corpus.counts.indexed.toLocaleString()} official pages`;
+    detail.textContent = `${corpus.counts.passages.toLocaleString()} searchable passages`;
+    const checkedAt = new Date(corpus.generatedAt);
+    document.querySelector("#docs-date").textContent = `Indexed ${checkedAt.toLocaleDateString()}`;
+    if (corpus.counts.failed) {
+      detail.textContent += ` · ${corpus.counts.failed} unavailable`;
+    }
+  } catch (error) {
+    label.firstChild.textContent = "Docs status unavailable";
+    detail.textContent = error instanceof Error ? error.message : String(error);
+    document.querySelector("#corpus-dot").classList.add("status-dot-offline");
+    document.querySelector("#freshness-dot").classList.add("status-dot-offline");
+  }
 }
 
 function switchView(viewName) {
@@ -312,7 +396,7 @@ function switchView(viewName) {
 function startApp() {
   const askButton = document.querySelector("#ask-button");
   const questionInput = document.querySelector("#question-input");
-  askButton.addEventListener("click", () => {
+  askButton.addEventListener("click", async () => {
     const question = questionInput.value.trim();
     if (!question) {
       questionInput.focus();
@@ -320,7 +404,21 @@ function startApp() {
     }
     const fromVersion = document.querySelector("#flutter-version").value;
     const targetVersion = document.querySelector("#target-version").value;
-    renderAnswer(getAnswer(question, targetVersion, fromVersion), fromVersion, targetVersion);
+    askButton.disabled = true;
+    askButton.textContent = "Searching official docs…";
+    try {
+      const answer = await postJson("/api/ask", { question, fromVersion, targetVersion });
+      renderAnswer(answer, fromVersion, targetVersion);
+    } catch (error) {
+      renderAnswer({
+        answer: error instanceof Error ? error.message : String(error),
+        warning: "The documentation search could not be completed.",
+        results: []
+      }, fromVersion, targetVersion);
+    } finally {
+      askButton.disabled = false;
+      askButton.replaceChildren("Ask FlutterFix ", Object.assign(document.createElement("span"), { textContent: "↗" }));
+    }
   });
   questionInput.addEventListener("keydown", (event) => {
     if (event.key === "Enter" && !event.shiftKey) {
@@ -346,15 +444,56 @@ function startApp() {
   document.querySelector("#clear-answer").addEventListener("click", () => {
     document.querySelector("#answer-card").classList.add("hidden");
   });
-  document.querySelector("#map-button").addEventListener("click", () => {
-    const findings = findMigrations(
-      document.querySelector("#pubspec-input").value,
-      document.querySelector("#widget-input").value,
-      document.querySelector("#map-from-version").value,
-      document.querySelector("#map-to-version").value
-    );
-    renderMigrations(findings, document.querySelector("#map-to-version").value);
+  document.querySelector("#map-button").addEventListener("click", async () => {
+    const button = document.querySelector("#map-button");
+    button.disabled = true;
+    try {
+      const payload = await postJson("/api/migration-map", {
+        pubspec: document.querySelector("#pubspec-input").value,
+        widget: document.querySelector("#widget-input").value,
+        fromVersion: document.querySelector("#map-from-version").value,
+        targetVersion: document.querySelector("#map-to-version").value
+      });
+      renderMigrations(payload);
+    } catch (error) {
+      renderMigrations({
+        findings: [{
+          id: "request-error",
+          title: "Migration map unavailable",
+          replacement: "Retry after checking the server",
+          version: "Request failed",
+          details: error instanceof Error ? error.message : String(error),
+          source: "breaking"
+        }],
+        targetVersion: document.querySelector("#map-to-version").value
+      });
+    } finally {
+      button.disabled = false;
+    }
   });
+  document.querySelector("#analyze-button").addEventListener("click", async () => {
+    const button = document.querySelector("#analyze-button");
+    const result = document.querySelector("#analyzer-result");
+    button.disabled = true;
+    result.classList.remove("hidden", "pass", "fail");
+    result.textContent = "Checking the configured target Flutter SDK…";
+    try {
+      const analysis = await postJson("/api/analyze", {
+        source: document.querySelector("#widget-input").value,
+        targetVersion: document.querySelector("#map-to-version").value
+      });
+      result.classList.add(analysis.passed ? "pass" : "fail");
+      result.textContent = analysis.passed
+        ? `dart analyze passed on Flutter ${analysis.targetVersion}.\n${analysis.output || "No diagnostics."}`
+        : `dart analyze found issues on Flutter ${analysis.targetVersion} (exit ${analysis.exitCode}).\n${analysis.output || "No analyzer output."}`;
+    } catch (error) {
+      result.classList.add("fail");
+      result.textContent = error instanceof Error ? error.message : String(error);
+    } finally {
+      button.disabled = false;
+    }
+  });
+  void refreshDocsStatus();
 }
 
 if (typeof document !== "undefined") startApp();

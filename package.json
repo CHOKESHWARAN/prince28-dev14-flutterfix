@@ -5,6 +5,9 @@
   "type": "module",
   "scripts": {
     "test": "node --test",
-    "start": "node server.mjs"
+    "start": "node server.mjs",
+    "docs:sync": "node scripts/index-docs.mjs",
+    "evaluate:citations": "node scripts/evaluate-citations.mjs",
+    "mcp": "node mcp-server.mjs"
   }
 }

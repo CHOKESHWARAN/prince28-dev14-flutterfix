@@ -1,4 +1,3 @@
-
 """All settings come from environment variables (or a local .env file)."""
 
 from functools import lru_cache
@@ -17,12 +16,13 @@ class Settings(BaseSettings):
     )
 
     app_name: str = "flutterfix"
+    # No default on purpose: if APP_ENV is missing, the app refuses to start.
     app_env: Literal["local", "ci", "production"]
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
     data_file: Path = Path("data/sample_records.json")
 
     # Neon PostgreSQL connection
-    database_url: SecretStr
+    database_url: SecretStr | None = None
 
 
 @lru_cache

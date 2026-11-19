@@ -76,8 +76,11 @@ class DocumentRepository:
                         f"Invalid filter parameter '{key}'. Allowed: {allowed}"
                     )
 
-                filter_payload = json.dumps({key: val})
-                query = query.where(Document.metadata_.op("@>")(cast(filter_payload, JSONB)))
+                if key == "doc_type":
+                    query = query.where(Document.doc_type == str(val))
+                else:
+                    filter_payload = json.dumps({key: val})
+                    query = query.where(Document.metadata_.op("@>")(cast(filter_payload, JSONB)))
 
         # Apply search query across title, external_id, or metadata text
         if q:

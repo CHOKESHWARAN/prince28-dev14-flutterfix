@@ -17,6 +17,7 @@ SAMPLE_DOCS = [
         "title": "Alpha guideline",
         "topic_id": "flat-button",
         "category": "widget",
+        "doc_type": "widget",
         "year": 2023,
     },
     {
@@ -24,6 +25,7 @@ SAMPLE_DOCS = [
         "title": "Beta circular",
         "topic_id": "will-pop-scope",
         "category": "navigation",
+        "doc_type": "navigation",
         "year": 2024,
     },
     {
@@ -31,6 +33,7 @@ SAMPLE_DOCS = [
         "title": "Gamma notice",
         "topic_id": "sound-null-safety",
         "category": "language",
+        "doc_type": "language",
         "year": 2025,
     },
 ]

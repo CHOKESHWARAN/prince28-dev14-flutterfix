@@ -45,6 +45,15 @@ def test_metadata_filtering(client):
     assert items[0]["id"] == "001"
 
 
+def test_doc_type_filtering(client):
+    response = client.get("/v1/documents", params={"doc_type": "widget"})
+    assert response.status_code == 200
+    items = response.json()["items"]
+    assert len(items) == 1
+    assert items[0]["id"] == "001"
+    assert items[0]["doc_type"] == "widget"
+
+
 def test_invalid_filter_name_is_400(client):
     response = client.get("/v1/documents", params={"unknown_filter": "value"})
     assert response.status_code == 400

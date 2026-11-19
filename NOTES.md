@@ -32,18 +32,7 @@ Command: `uv run alembic history`
 
 ### Migration Downgrade and Upgrade Verification
 
-1. **Downgrade to Revision 1**:
-   ```bash
-   uv run alembic downgrade -1
-   ```
-   Output:
-   ```text
-   INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
-   INFO  [alembic.runtime.migration] Will assume transactional DDL.
-   INFO  [alembic.runtime.migration] Running downgrade 0002_add_gin_index_on_metadata -> 0001_create_documents_and_pages, add gin index on metadata
-   ```
-
-2. **Current Revision Inspection**:
+1. **Current Migration Head**:
    ```bash
    uv run alembic current
    ```
@@ -51,10 +40,32 @@ Command: `uv run alembic history`
    ```text
    INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
    INFO  [alembic.runtime.migration] Will assume transactional DDL.
-   0001_create_documents_and_pages
+   0003_add_index_on_doc_type (head)
    ```
 
-3. **Re-Upgrade to Head**:
+2. **Downgrade to Revision 2**:
+   ```bash
+   uv run alembic downgrade -1
+   ```
+   Output:
+   ```text
+   INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+   INFO  [alembic.runtime.migration] Will assume transactional DDL.
+   INFO  [alembic.runtime.migration] Running downgrade 0003_add_index_on_doc_type -> 0002_add_gin_index_on_metadata, add index on doc_type
+   ```
+
+3. **Current Revision After Downgrade**:
+   ```bash
+   uv run alembic current
+   ```
+   Output:
+   ```text
+   INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+   INFO  [alembic.runtime.migration] Will assume transactional DDL.
+   0002_add_gin_index_on_metadata
+   ```
+
+4. **Re-Upgrade to Head**:
    ```bash
    uv run alembic upgrade head
    ```
@@ -62,10 +73,10 @@ Command: `uv run alembic history`
    ```text
    INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
    INFO  [alembic.runtime.migration] Will assume transactional DDL.
-   INFO  [alembic.runtime.migration] Running upgrade 0001_create_documents_and_pages -> 0002_add_gin_index_on_metadata, add gin index on metadata
+   INFO  [alembic.runtime.migration] Running upgrade 0002_add_gin_index_on_metadata -> 0003_add_index_on_doc_type, add index on doc_type
    ```
 
-Both migration revisions cleanly support upgrade and downgrade operations.
+All three migration revisions cleanly support upgrade and downgrade operations.
 
 ---
 
@@ -165,16 +176,24 @@ rootdir: D:\placement\day2\project
 configfile: pyproject.toml
 testpaths: tests
 plugins: anyio-4.16.0, platformdirs-4.14.7
-collected 14 items
+collected 38 items
 
-tests\test_api.py ............                                           [ 85%]
-tests\test_database_connection.py .                                      [ 92%]
-tests\test_db_integration.py s                                           [100%]
+tests\test_api.py .............                                          [ 34%]
+tests\test_database_connection.py .                                      [ 36%]
+tests\test_db_integration.py s                                           [ 39%]
+tests\test_loader.py ...........                                         [ 68%]
+tests\test_models.py ...                                                 [ 76%]
+tests\test_repository.py .........                                       [100%]
 
-================== 13 passed, 1 skipped in 2.77s ===================
+======================== 37 passed, 1 skipped in 1.04s ========================
 ```
 
-All 12 unit tests pass completely in isolation without requiring a live database connection by utilizing FastAPI dependency overrides and an in-memory repository. The live database connection check passes, and integration tests skip cleanly when `TEST_DATABASE_URL` is omitted.
+The test suite covers:
+- API endpoints (health, ready DB connectivity, documents pagination, search, metadata filtering, doc_type filtering, problem-details error format, request-ID propagation).
+- Model definitions (Document, Page, naming conventions, properties, relationships).
+- Idempotent loader (new record insert, unchanged skip, changed update, in-batch duplicate handling, date parsing, missing fields, transaction rollback).
+- Repository query generation (JSONB containment `@>`, dedicated doc_type column filter, text search, pagination count, ID/topic/API lookups).
+- Database connection tests skip cleanly when `TEST_DATABASE_URL` is omitted.
 
 ---
 
@@ -187,7 +206,7 @@ All checks passed!
 
 Command: `uv run ruff format --check .`
 ```text
-29 files already formatted
+34 files already formatted
 ```
 
 ---

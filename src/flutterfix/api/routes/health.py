@@ -1,15 +1,9 @@
-<<<<<<< HEAD
-from fastapi import APIRouter, Response
-
-from flutterfix.api.deps import SettingsDep, StoreDep
-=======
 from typing import Any
 
 from fastapi import APIRouter, Response
 from sqlalchemy import text
 
 from flutterfix.api.deps import SessionDep, SettingsDep
->>>>>>> backup/day-03-postgres
 
 router = APIRouter(tags=["health"])
 
@@ -21,14 +15,6 @@ def health(settings: SettingsDep) -> dict[str, str]:
 
 
 @router.get("/ready")
-<<<<<<< HEAD
-def ready(store: StoreDep, response: Response) -> dict:
-    """Readiness: can this instance serve traffic right now?"""
-    checks = {"records_loaded": store.ready}
-    ok = all(checks.values())
-    if not ok:
-        response.status_code = 503
-=======
 async def ready(response: Response, session: SessionDep) -> dict[str, Any]:
     """Readiness: can this instance serve traffic right now? Verifies PostgreSQL connectivity."""
     db_ok = False
@@ -46,5 +32,4 @@ async def ready(response: Response, session: SessionDep) -> dict[str, Any]:
     if not ok:
         response.status_code = 503
 
->>>>>>> backup/day-03-postgres
     return {"status": "ready" if ok else "not_ready", "checks": checks}

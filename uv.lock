@@ -3,8 +3,6 @@ revision = 3
 requires-python = ">=3.12"
 
 [[package]]
-<<<<<<< HEAD
-=======
 name = "alembic"
 version = "1.20.1"
 source = { registry = "https://pypi.org/simple" }
@@ -19,7 +17,6 @@ wheels = [
 ]
 
 [[package]]
->>>>>>> backup/day-03-postgres
 name = "annotated-doc"
 version = "0.0.6"
 source = { registry = "https://pypi.org/simple" }
@@ -51,8 +48,6 @@ wheels = [
 ]
 
 [[package]]
-<<<<<<< HEAD
-=======
 name = "asyncpg"
 version = "0.32.0"
 source = { registry = "https://pypi.org/simple" }
@@ -115,7 +110,6 @@ wheels = [
 ]
 
 [[package]]
->>>>>>> backup/day-03-postgres
 name = "certifi"
 version = "2026.10.23"
 source = { registry = "https://pypi.org/simple" }
@@ -336,16 +330,11 @@ name = "flutterfix"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
-<<<<<<< HEAD
-    { name = "fastapi" },
-    { name = "pydantic-settings" },
-=======
     { name = "alembic" },
     { name = "asyncpg" },
     { name = "fastapi" },
     { name = "pydantic-settings" },
     { name = "sqlalchemy", extra = ["asyncio"] },
->>>>>>> backup/day-03-postgres
     { name = "uvicorn", extra = ["standard"] },
 ]
 
@@ -361,16 +350,11 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-<<<<<<< HEAD
-    { name = "fastapi", specifier = ">=0.163.1" },
-    { name = "pydantic-settings", specifier = ">=2.16.3" },
-=======
     { name = "alembic", specifier = ">=1.20.1" },
     { name = "asyncpg", specifier = ">=0.32.0" },
     { name = "fastapi", specifier = ">=0.163.1" },
     { name = "pydantic-settings", specifier = ">=2.16.3" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.1.9" },
->>>>>>> backup/day-03-postgres
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.54.0" },
 ]
 
@@ -385,8 +369,6 @@ dev = [
 ]
 
 [[package]]
-<<<<<<< HEAD
-=======
 name = "greenlet"
 version = "3.5.6"
 source = { registry = "https://pypi.org/simple" }
@@ -454,7 +436,6 @@ wheels = [
 ]
 
 [[package]]
->>>>>>> backup/day-03-postgres
 name = "h11"
 version = "0.16.0"
 source = { registry = "https://pypi.org/simple" }
@@ -605,8 +586,6 @@ wheels = [
 ]
 
 [[package]]
-<<<<<<< HEAD
-=======
 name = "mako"
 version = "1.4.3"
 source = { registry = "https://pypi.org/simple" }
@@ -732,7 +711,6 @@ wheels = [
 ]
 
 [[package]]
->>>>>>> backup/day-03-postgres
 name = "nodeenv"
 version = "1.12.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1089,8 +1067,6 @@ wheels = [
 ]
 
 [[package]]
-<<<<<<< HEAD
-=======
 name = "sqlalchemy"
 version = "2.1.9"
 source = { registry = "https://pypi.org/simple" }
@@ -1168,7 +1144,6 @@ asyncio = [
 ]
 
 [[package]]
->>>>>>> backup/day-03-postgres
 name = "starlette"
 version = "1.10.0"
 source = { registry = "https://pypi.org/simple" }

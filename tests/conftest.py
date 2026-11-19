@@ -88,6 +88,7 @@ def mock_session():
     session = AsyncMock()
     mock_result = MagicMock()
     mock_result.scalar_one.return_value = 1
+    mock_result.scalar.return_value = 20
     session.execute.return_value = mock_result
     return session
 

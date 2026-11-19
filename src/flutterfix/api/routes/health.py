@@ -16,19 +16,27 @@ def health(settings: SettingsDep) -> dict[str, str]:
 
 @router.get("/ready")
 async def ready(response: Response, session: SessionDep) -> dict[str, Any]:
-    """Readiness: can this instance serve traffic right now? Verifies PostgreSQL connectivity."""
+    """Readiness: verifies PostgreSQL connectivity and loaded records count."""
     db_ok = False
+    records_loaded = False
     try:
         result = await session.execute(text("SELECT 1"))
         db_ok = result.scalar_one() == 1
+
+        count_result = await session.execute(text("SELECT count(*) FROM documents"))
+        val = count_result.scalar()
+        if val is None:
+            val = count_result.scalar_one()
+        records_loaded = bool(val and val > 0)
     except Exception:
         db_ok = False
+        records_loaded = False
 
     checks = {
         "database": db_ok,
-        "records_loaded": db_ok,
+        "records_loaded": records_loaded,
     }
-    ok = all(checks.values())
+    ok = db_ok and records_loaded
     if not ok:
         response.status_code = 503
 

@@ -9,15 +9,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from flutterfix.config import Settings
 from flutterfix.db.repository import DocumentRepository
 from flutterfix.db.session import AsyncSessionLocal
-from flutterfix.store import RecordStore
 
 
 def get_app_settings(request: Request) -> Settings:
     return request.app.state.settings
-
-
-def get_store(request: Request) -> RecordStore:
-    return getattr(request.app.state, "store", None)
 
 
 async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
@@ -34,6 +29,5 @@ def get_repository(
 
 
 SettingsDep = Annotated[Settings, Depends(get_app_settings)]
-StoreDep = Annotated[RecordStore, Depends(get_store)]
 RepoDep = Annotated[DocumentRepository, Depends(get_repository)]
 SessionDep = Annotated[AsyncSession, Depends(get_db_session)]

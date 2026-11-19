@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import json
 import sys
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -19,6 +20,20 @@ def compute_sha256(record: dict[str, Any]) -> str:
     """Generate SHA-256 fingerprint from canonical JSON representation."""
     canonical = json.dumps(record, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def parse_date(value: Any) -> date | None:
+    """Safely parse ISO date strings or date objects."""
+    if not value:
+        return None
+    if isinstance(value, date):
+        return value
+    if isinstance(value, str):
+        try:
+            return date.fromisoformat(value.strip())
+        except (ValueError, TypeError):
+            return None
+    return None
 
 
 async def load_sample_records(data_path: Path | None = None) -> tuple[int, int, int, int]:
@@ -44,14 +59,24 @@ async def load_sample_records(data_path: Path | None = None) -> tuple[int, int, 
         result = await session.execute(stmt)
         existing_map: dict[str, Document] = {doc.external_id: doc for doc in result.scalars().all()}
 
+        seen_in_batch: set[str] = set()
+
         for row in raw_data:
+            if not isinstance(row, dict) or "id" not in row:
+                continue
+
             external_id = str(row.get("id"))
+            if external_id in seen_in_batch:
+                continue
+            seen_in_batch.add(external_id)
+
             sha = compute_sha256(row)
 
             title = row.get("title") or row.get("topic") or f"Record {external_id}"
             source_url = row.get("page") or row.get("breaking_change_url")
-            licence = row.get("licence", "CC-BY-4.0")
+            licence = row.get("licence") or row.get("license") or "CC-BY-4.0"
             doc_type = row.get("doc_type") or row.get("category") or "breaking_change"
+            published_on = parse_date(row.get("published_on") or row.get("date"))
             page_text = row.get("description") or title
 
             # Metadata contains all record attributes for JSONB filtering
@@ -65,13 +90,14 @@ async def load_sample_records(data_path: Path | None = None) -> tuple[int, int, 
                     source_url=source_url,
                     licence=licence,
                     doc_type=doc_type,
-                    published_on=None,
+                    published_on=published_on,
                     sha256=sha,
                     metadata_=metadata_dict,
                 )
                 doc.pages.append(Page(page_no=1, text=page_text))
                 session.add(doc)
                 inserted += 1
+                existing_map[external_id] = doc
             else:
                 doc = existing_map[external_id]
                 if doc.sha256 != sha:
@@ -80,6 +106,7 @@ async def load_sample_records(data_path: Path | None = None) -> tuple[int, int, 
                     doc.source_url = source_url
                     doc.licence = licence
                     doc.doc_type = doc_type
+                    doc.published_on = published_on
                     doc.sha256 = sha
                     doc.metadata_ = metadata_dict
 

@@ -25,7 +25,8 @@ The database connection converts the Neon PostgreSQL URL to the `postgresql+asyn
 Command: `uv run alembic history`
 
 ```text
-0001_create_documents_and_pages -> 0002_add_gin_index_on_metadata (head), add gin index on metadata
+0002_add_gin_index_on_metadata -> 0003_add_index_on_doc_type (head), add index on doc_type
+0001_create_documents_and_pages -> 0002_add_gin_index_on_metadata, add gin index on metadata
 <base> -> 0001_create_documents_and_pages, create documents and pages
 ```
 

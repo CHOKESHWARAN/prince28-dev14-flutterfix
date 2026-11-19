@@ -43,7 +43,9 @@ class Document(Base):
     title: Mapped[str] = mapped_column(Text, nullable=False)
     source_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     licence: Mapped[str | None] = mapped_column(String(200), nullable=True)
-    doc_type: Mapped[str] = mapped_column(String(50), nullable=False, default="breaking_change")
+    doc_type: Mapped[str] = mapped_column(
+        String(50), nullable=False, default="breaking_change", index=True
+    )
     published_on: Mapped[date | None] = mapped_column(Date, nullable=True)
     sha256: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     metadata_: Mapped[dict[str, Any]] = mapped_column(
@@ -68,6 +70,14 @@ class Document(Base):
         passive_deletes=True,
     )
 
+    @property
+    def license(self) -> str | None:
+        return self.licence
+
+    @license.setter
+    def license(self, val: str | None) -> None:
+        self.licence = val
+
 
 class Page(Base):
     __tablename__ = "pages"
@@ -87,6 +97,22 @@ class Page(Base):
     text: Mapped[str] = mapped_column(Text, nullable=False)
 
     document: Mapped["Document"] = relationship("Document", back_populates="pages")
+
+    @property
+    def content(self) -> str:
+        return self.text
+
+    @content.setter
+    def content(self, val: str) -> None:
+        self.text = val
+
+    @property
+    def url(self) -> str | None:
+        return self.document.source_url if self.document else None
+
+    @property
+    def title(self) -> str | None:
+        return self.document.title if self.document else None
 
 
 # Note: GIN index 'ix_documents_metadata_gin' on documents.metadata is added in Migration 2.

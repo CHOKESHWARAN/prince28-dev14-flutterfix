@@ -1,0 +1,45 @@
+[project]
+name = "flutterfix"
+version = "0.1.0"
+description = "A Flutter and Dart mentor that answers from official docs and breaking-changes pages for the user's Flutter version."
+readme = "README.md"
+authors = [
+    { name = "CHOKESHWARAN", email = "chokeshwaran.m.it.28@psvpec.in" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "alembic>=1.20.1",
+    "asyncpg>=0.32.0",
+    "fastapi>=0.163.1",
+    "pydantic-settings>=2.16.3",
+    "sqlalchemy[asyncio]>=2.1.9",
+    "uvicorn[standard]>=0.54.0",
+]
+
+[build-system]
+requires = ["uv_build>=0.13.8,<0.14.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "detect-secrets>=1.5.0",
+    "httpx>=0.28.1",
+    "pre-commit>=4.7.0",
+    "pre-commit-hooks>=6.0.0",
+    "pytest>=9.2.0",
+    "ruff>=0.17.5",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+pythonpath = ["src"]
+# Harmless notice from newer Starlette versions; hide it so real warnings stand out.
+filterwarnings = ["ignore:Using `httpx` with `starlette.testclient`"]

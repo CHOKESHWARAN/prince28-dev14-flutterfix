@@ -7,8 +7,8 @@ from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from flutterfix.config import Settings
+from flutterfix.db import session as db_session
 from flutterfix.db.repository import DocumentRepository
-from flutterfix.db.session import AsyncSessionLocal
 
 
 def get_app_settings(request: Request) -> Settings:
@@ -17,7 +17,7 @@ def get_app_settings(request: Request) -> Settings:
 
 async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
     """Yield an asynchronous database session per request."""
-    async with AsyncSessionLocal() as session:
+    async with db_session.AsyncSessionLocal() as session:
         yield session
 
 

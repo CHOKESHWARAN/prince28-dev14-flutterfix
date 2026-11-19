@@ -1,8 +1,10 @@
-# FlutterFix – Day 3 PostgreSQL Migration Notes
+# FlutterFix – Day 3 and Day 4 Implementation Notes
 
-This document contains actual execution outputs, database migration history, data loader runs, query plan analysis, and verification evidence for the Day 3 PostgreSQL migration of FlutterFix.
+This document contains actual execution outputs, database migration history, data loader runs, query plan analysis, and verification evidence for Day 3 and Day 4 of FlutterFix.
 
 ---
+
+# Day 3 — PostgreSQL Migration
 
 ## 1. Database Connection Verification
 
@@ -239,3 +241,97 @@ uv run python scripts/db_check.py
 # Verify GIN index and analyze execution plans
 uv run python scripts/explain.py
 ```
+
+
+---
+
+# Day 4 — Docker and Testing
+
+### Dockerfile implementation & multi-stage build
+- **Base image:** `python:3.12-slim` with `uv` copied from `ghcr.io/astral-sh/uv:0.11.32`.
+- **Multi-stage build:**
+  - Builder stage: Installs dependencies via `uv sync --frozen --no-dev --no-install-project` into `/app/.venv`.
+  - Runtime stage: Minimal `python:3.12-slim` runtime containing only virtual environment, source tree, migrations, and scripts.
+- **Non-root container user:** Explicit non-root system user `app` with UID 10001 and GID 10001 (`groupadd -g 10001 -r app && useradd -u 10001 -r -g app -d /home/app -m app`).
+- **Layer caching architecture:**
+  - Layer 1: Copies `pyproject.toml`, `uv.lock`, `.python-version` and installs locked production dependencies.
+  - Layer 2: Copies `src/` and performs project editable install via `uv sync --frozen --no-dev`.
+  - Result: Source code edits invalidate only Layer 2, keeping the large dependency installation cached for fast subsequent builds.
+
+### Docker Compose architecture & services
+- **Compose services (`docker-compose.yml`):**
+  - `db`: `pgvector/pgvector:pg17` exposed on `5433:5432` with named volume `flutterfix_postgres_data` and init script `docker/initdb/01-create-test-db.sql`.
+  - `redis`: `redis:7-alpine` using internal port exposure `6379` (not publicly exposed on host interfaces).
+  - `migrate`: One-shot container that executes `alembic upgrade head && python scripts/load_db.py` once `db` is healthy, exiting with code 0.
+  - `api`: Production FastAPI server starting once `migrate` completes successfully, with liveness healthcheck.
+- **Compose validation:** Verified via `docker compose config` (exit code 0).
+
+### Breaking the database (Liveness vs. Readiness)
+- **Liveness (`GET /health`):**
+  - Confirms the Python web process is running and accepting HTTP requests.
+  - Returns `HTTP 200 {"status": "ok", "app": "flutterfix", "env": "local"}` regardless of whether PostgreSQL or external services are up or down.
+- **Readiness (`GET /ready`):**
+  - Performs an active database connection check (`SELECT 1`) and verifies record loading (`SELECT count(*) FROM documents`).
+  - When the database is stopped: Returns `HTTP 503 {"status": "not_ready", "checks": {"database": false, "records_loaded": false}}`.
+  - When the database restarts: Automatically recovers to `HTTP 200` without requiring an API restart due to connection pool resilience.
+
+### Temporary database cleanup and safety guarantees
+- **Safety checks (`tests/integration/conftest.py`):**
+  - Strict pattern matching: Database names must match `^flutterfix_test_[0-9a-f]{12}$`.
+  - Blacklist protection: Refuses to touch protected databases (`postgres`, `app`, `app_test`, `neondb`).
+  - Cleanup guarantee: Wraps migration and execution in a `try...finally` block to ensure `DROP DATABASE IF EXISTS` runs even when setup or migration fails.
+  - Parameterized session termination: `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = :datname` prevents SQL injection.
+
+### Unit-test results
+- Command: `python -m pytest tests/unit -v` (via `uv run poe test`)
+  ```text
+  tests\unit\test_api.py .............                                     [ 35%]
+  tests\unit\test_database_connection.py .                                 [ 37%]
+  tests\unit\test_loader.py ...........                                    [ 67%]
+  tests\unit\test_models.py ...                                            [ 75%]
+  tests\unit\test_repository.py .........                                  [100%]
+  ============================= 37 passed in 1.77s ==============================
+  ```
+
+### Integration-test results (Offline environment)
+- Command: `python -m pytest tests/integration` (via `uv run poe test-integration`)
+  ```text
+  tests\integration\test_database.py ssss.                                 [100%]
+  ======================== 1 passed, 4 SKIPPED in 4.24s =========================
+  ```
+  - `test_safety_validation_protects_critical_databases`: PASSED.
+  - Real database integration tests: SKIPPED (PostgreSQL at localhost:5433 unreachable while Docker daemon is stopped).
+
+### Code coverage report
+- Command: `python -m pytest tests/unit --cov=flutterfix --cov-report=term-missing --cov-report=html:htmlcov`
+  ```text
+  Name                                     Stmts   Miss Branch BrPart  Cover   Missing
+  ------------------------------------------------------------------------------------
+  src\flutterfix\api\deps.py                  17      3      0      0    82%   20-21, 28
+  src\flutterfix\api\middleware.py            21      3      0      0    86%   22-24
+  src\flutterfix\api\routes\documents.py      24      2      6      0    93%   36-37
+  src\flutterfix\api\routes\health.py         28      1      4      1    94%   29
+  src\flutterfix\config.py                    20      1      2      1    91%   31
+  src\flutterfix\db\repository.py             67      0     22      2    98%   55->58, 71->86
+  src\flutterfix\db\session.py                26      2      0      0    92%   49-50
+  src\flutterfix\db\url.py                    17      0      4      2    90%   25->29, 37->40
+  ------------------------------------------------------------------------------------
+  TOTAL                                      343     12     44      6    95%
+
+  8 files skipped due to complete coverage.
+  Coverage HTML written to dir htmlcov
+  ```
+- **Total Coverage:** 95% (exceeds >= 90% threshold).
+
+### Ruff lint and formatting results
+- **Lint:** `uv run --no-sync ruff check .` -> `All checks passed!`
+- **Format:** `uv run --no-sync ruff format --check .` -> `39 files already formatted`
+
+### Docker build and startup results
+- `docker version`: Client 29.7.2 installed. Server daemon stopped (`open //./pipe/dockerDesktopLinuxEngine: The system cannot find the file specified`).
+- `docker compose config`: **PASS** (validated configuration and volume mapping).
+- `docker compose build / up`: **NOT VERIFIED** (requires manual start of Docker Desktop service on Windows host).
+
+### GitHub Actions CI results
+- Workflow file: `.github/workflows/ci.yml`
+- Verification: Sets up Python 3.12, uv, Ruff lint, Ruff format check, unit test suite with coverage, and PostgreSQL 17 + pgvector service container for integration tests. Configured without exposing secrets or Neon credentials.

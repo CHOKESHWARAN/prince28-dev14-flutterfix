@@ -12,8 +12,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from flutterfix.config import get_settings
+from flutterfix.db import session as db_session
 from flutterfix.db.models import Document, Page
-from flutterfix.db.session import AsyncSessionLocal, dispose_engine
+
+AsyncSessionLocal = db_session.AsyncSessionLocal
+dispose_engine = db_session.dispose_engine
 
 
 def compute_sha256(record: dict[str, Any]) -> str:
@@ -53,7 +56,10 @@ async def load_sample_records(data_path: Path | None = None) -> tuple[int, int, 
     unchanged = 0
     total = len(raw_data)
 
-    async with AsyncSessionLocal() as session, session.begin():
+    session_factory = getattr(
+        sys.modules[__name__], "AsyncSessionLocal", db_session.AsyncSessionLocal
+    )
+    async with session_factory() as session, session.begin():
         # Query existing documents keyed by external_id
         stmt = select(Document).options(selectinload(Document.pages))
         result = await session.execute(stmt)
@@ -131,7 +137,7 @@ async def main() -> int:
         print(f"Failed to load records: {exc}", file=sys.stderr)
         return 1
     finally:
-        await dispose_engine()
+        await db_session.dispose_engine()
 
 
 if __name__ == "__main__":

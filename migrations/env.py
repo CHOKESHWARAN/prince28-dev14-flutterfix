@@ -29,6 +29,9 @@ target_metadata = Base.metadata
 
 
 def get_url_and_connect_args():
+    cfg_url = config.get_main_option("sqlalchemy.url")
+    if cfg_url:
+        return build_asyncpg_db_url(cfg_url)
     settings = get_settings()
     raw_url = settings.database_url.get_secret_value() if settings.database_url else ""
     return build_asyncpg_db_url(raw_url)

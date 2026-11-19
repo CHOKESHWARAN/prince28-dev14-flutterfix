@@ -24,9 +24,12 @@ build-backend = "uv_build"
 dev = [
     "detect-secrets>=1.5.0",
     "httpx>=0.28.1",
+    "poethepoet>=0.49.0",
     "pre-commit>=4.7.0",
     "pre-commit-hooks>=6.0.0",
     "pytest>=9.2.0",
+    "pytest-asyncio>=1.5.0",
+    "pytest-cov>=7.1.0",
     "ruff>=0.17.5",
 ]
 
@@ -41,5 +44,32 @@ select = ["E", "F", "I", "B", "UP", "SIM"]
 testpaths = ["tests"]
 addopts = "-q"
 pythonpath = [".", "src"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 # Harmless notice from newer Starlette versions; hide it so real warnings stand out.
 filterwarnings = ["ignore:Using `httpx` with `starlette.testclient`"]
+
+[tool.coverage.run]
+source = ["flutterfix"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+
+[tool.coverage.html]
+directory = "htmlcov"
+
+[tool.poe.tasks]
+dev = "python -m uvicorn flutterfix.api.main:create_app --factory --reload --no-access-log"
+lint = ["lint-check", "format-check"]
+lint-check = "python -m ruff check ."
+format-check = "python -m ruff format --check ."
+test = "python -m pytest tests/unit"
+cov = "python -m pytest tests/unit --cov=flutterfix --cov-report=term-missing --cov-report=html:htmlcov"
+migrate = "python -m alembic upgrade head"
+seed = "python scripts/load_db.py"
+
+[tool.poe.tasks.test-integration]
+cmd = "python -m pytest tests/integration"
+env = { TEST_DATABASE_URL = "postgresql://app:app@localhost:5433/app_test" }

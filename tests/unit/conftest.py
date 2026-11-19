@@ -1,4 +1,4 @@
-"""Pytest configuration and test fixtures for FlutterFix."""
+"""Unit test configuration and fixtures for FlutterFix."""
 
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock

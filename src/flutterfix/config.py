@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     # Neon PostgreSQL connection
     database_url: SecretStr | None = None
 
+    # Embedded commit SHA / release version
+    git_sha: str = "dev"
+
     def validate_database_config(self) -> None:
         if self.app_env == "production" and self.database_url is None:
             raise ValueError("DATABASE_URL is required in production.")

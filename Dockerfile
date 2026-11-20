@@ -24,10 +24,13 @@ RUN uv sync --frozen --no-dev
 # Stage 2: Minimal runtime image
 FROM python:3.12-slim AS runtime
 
+ARG GIT_SHA="local"
+
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PATH="/app/.venv/bin:$PATH" \
-    PORT=8000
+    PORT=8000 \
+    GIT_SHA=${GIT_SHA}
 
 # Create dedicated non-root user with explicit UID/GID 10001
 RUN groupadd -g 10001 -r app && useradd -u 10001 -r -g app -d /home/app -m app

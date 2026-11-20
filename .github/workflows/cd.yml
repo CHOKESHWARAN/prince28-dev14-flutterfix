@@ -1,0 +1,68 @@
+name: CD
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: ["main"]
+
+concurrency:
+  group: production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to Render and Verify
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+
+    steps:
+      - name: Trigger Render Deployment
+        if: env.RENDER_DEPLOY_HOOK != ''
+        env:
+          RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
+        run: |
+          echo "Triggering Render deployment..."
+          curl -s -f -X POST "$RENDER_DEPLOY_HOOK" > /dev/null || {
+            echo "Failed to trigger Render deploy hook."
+            exit 1
+          }
+          echo "Deploy hook triggered successfully."
+
+      - name: Await Deployment and Smoke Test
+        env:
+          LIVE_URL: ${{ vars.LIVE_URL }}
+          EXPECTED_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          TARGET_URL="${LIVE_URL:-https://prince28-dev14-flutterfix.onrender.com}"
+          echo "Target service URL: $TARGET_URL"
+          echo "Expected commit SHA: $EXPECTED_SHA"
+
+          echo "Waiting for deployment to become healthy..."
+          ATTEMPTS=0
+          MAX_ATTEMPTS=30
+          HEALTHY=0
+
+          while [ $ATTEMPTS -lt $MAX_ATTEMPTS ]; do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$TARGET_URL/health" || echo "000")
+            if [ "$STATUS" = "200" ]; then
+              HEALTHY=1
+              echo "Liveness check passed (HTTP 200)."
+              break
+            fi
+            echo "Attempt $((ATTEMPTS+1))/$MAX_ATTEMPTS: received HTTP $STATUS, retrying in 10s..."
+            sleep 10
+            ATTEMPTS=$((ATTEMPTS+1))
+          done
+
+          if [ $HEALTHY -ne 1 ]; then
+            echo "Error: Service failed to reach healthy state within timeout."
+            exit 1
+          fi
+
+          echo "Verifying readiness endpoint..."
+          READY_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$TARGET_URL/ready" || echo "000")
+          echo "/ready returned HTTP $READY_STATUS"
+          if [ "$READY_STATUS" != "200" ]; then
+            echo "Warning: /ready returned HTTP $READY_STATUS (check database connectivity)."
+          fi

@@ -17,52 +17,89 @@ jobs:
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
 
     steps:
+      - name: Validate Required Secrets and Variables
+        env:
+          RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
+          LIVE_URL: ${{ vars.LIVE_URL }}
+        run: |
+          MISSING=0
+          if [ -z "$RENDER_DEPLOY_HOOK" ]; then
+            echo "::error::Missing required repository secret: RENDER_DEPLOY_HOOK. Please configure your Render deploy hook URL in Settings > Secrets and variables > Actions > Secrets."
+            MISSING=1
+          fi
+          if [ -z "$LIVE_URL" ]; then
+            echo "::error::Missing required repository variable: LIVE_URL. Please configure the production service URL (e.g. https://prince28-dev14-flutterfix.onrender.com) in Settings > Secrets and variables > Actions > Variables."
+            MISSING=1
+          fi
+          if [ $MISSING -ne 0 ]; then
+            echo "Deployment aborted due to missing configuration."
+            exit 1
+          fi
+          echo "All required deployment secrets and variables are present."
+
       - name: Trigger Render Deployment
-        if: env.RENDER_DEPLOY_HOOK != ''
         env:
           RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
         run: |
-          echo "Triggering Render deployment..."
-          curl -s -f -X POST "$RENDER_DEPLOY_HOOK" > /dev/null || {
-            echo "Failed to trigger Render deploy hook."
+          echo "Triggering Render deployment via deploy hook..."
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$RENDER_DEPLOY_HOOK")
+          if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
+            echo "::error::Render deploy hook returned unexpected HTTP status: $HTTP_CODE"
             exit 1
-          }
-          echo "Deploy hook triggered successfully."
+          fi
+          echo "Render deployment triggered successfully (HTTP $HTTP_CODE)."
 
-      - name: Await Deployment and Smoke Test
+      - name: Await Deployment and Verify Health & Ready
         env:
           LIVE_URL: ${{ vars.LIVE_URL }}
           EXPECTED_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
-          TARGET_URL="${LIVE_URL:-https://prince28-dev14-flutterfix.onrender.com}"
-          echo "Target service URL: $TARGET_URL"
+          echo "Target service URL: $LIVE_URL"
           echo "Expected commit SHA: $EXPECTED_SHA"
 
-          echo "Waiting for deployment to become healthy..."
+          echo "Polling /health for deployed commit SHA..."
           ATTEMPTS=0
-          MAX_ATTEMPTS=30
-          HEALTHY=0
+          MAX_ATTEMPTS=36
+          DEPLOYED=0
 
           while [ $ATTEMPTS -lt $MAX_ATTEMPTS ]; do
-            STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$TARGET_URL/health" || echo "000")
-            if [ "$STATUS" = "200" ]; then
-              HEALTHY=1
-              echo "Liveness check passed (HTTP 200)."
-              break
+            RESPONSE=$(curl -s -f "$LIVE_URL/health" || true)
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$LIVE_URL/health" || echo "000")
+
+            if [ "$HTTP_CODE" = "200" ]; then
+              echo "Liveness check returned HTTP 200: $RESPONSE"
+              if echo "$RESPONSE" | grep -q "$EXPECTED_SHA"; then
+                echo "Verified: /health is reporting deployed commit SHA: $EXPECTED_SHA"
+                DEPLOYED=1
+                break
+              else
+                echo "Service is reachable but running an older revision. Waiting for rollout..."
+              fi
+            else
+              echo "Attempt $((ATTEMPTS+1))/$MAX_ATTEMPTS: /health returned HTTP $HTTP_CODE, waiting 10s..."
             fi
-            echo "Attempt $((ATTEMPTS+1))/$MAX_ATTEMPTS: received HTTP $STATUS, retrying in 10s..."
             sleep 10
             ATTEMPTS=$((ATTEMPTS+1))
           done
 
-          if [ $HEALTHY -ne 1 ]; then
-            echo "Error: Service failed to reach healthy state within timeout."
+          if [ $DEPLOYED -ne 1 ]; then
+            echo "::error::Deployment verification failed: /health did not report deployed commit SHA $EXPECTED_SHA within timeout."
             exit 1
           fi
 
-          echo "Verifying readiness endpoint..."
-          READY_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$TARGET_URL/ready" || echo "000")
-          echo "/ready returned HTTP $READY_STATUS"
-          if [ "$READY_STATUS" != "200" ]; then
-            echo "Warning: /ready returned HTTP $READY_STATUS (check database connectivity)."
+          echo "Verifying /ready endpoint..."
+          READY_RESPONSE=$(curl -s -f "$LIVE_URL/ready" || true)
+          READY_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$LIVE_URL/ready" || echo "000")
+          echo "/ready returned HTTP $READY_CODE: $READY_RESPONSE"
+
+          if [ "$READY_CODE" != "200" ]; then
+            echo "::error::Readiness check failed: /ready returned HTTP $READY_CODE (expected 200)."
+            exit 1
           fi
+
+          if ! echo "$READY_RESPONSE" | grep -q '"ready"'; then
+            echo "::error::Readiness check failed: /ready response status is not 'ready': $READY_RESPONSE"
+            exit 1
+          fi
+
+          echo "Deployment verification successful: Service is live and fully ready."

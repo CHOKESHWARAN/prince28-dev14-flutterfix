@@ -30,6 +30,7 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PATH="/app/.venv/bin:$PATH" \
     PORT=8000 \
+    APP_ENV=production \
     GIT_SHA=${GIT_SHA}
 
 # Create dedicated non-root user with explicit UID/GID 10001
@@ -51,4 +52,4 @@ USER app
 
 EXPOSE 8000
 
-CMD ["sh", "-c", "exec uvicorn flutterfix.api.main:create_app --factory --host 0.0.0.0 --port ${PORT:-8000}"]
+CMD ["sh", "-c", "if [ -n \"$DATABASE_URL\" ]; then alembic upgrade head; fi && exec uvicorn flutterfix.api.main:create_app --factory --host 0.0.0.0 --port ${PORT:-8000}"]

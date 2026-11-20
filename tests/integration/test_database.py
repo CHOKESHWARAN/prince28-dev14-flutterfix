@@ -39,6 +39,26 @@ async def test_migrations_created_expected_tables(fresh_database):
 
 
 @pytest.mark.asyncio
+async def test_alembic_downgrade_and_upgrade_cycle(fresh_database):
+    """Verify that Alembic downgrade to -1 and re-upgrade to head works cleanly."""
+    import concurrent.futures
+
+    from alembic import command
+    from alembic.config import Config
+
+    alembic_cfg = Config("alembic.ini")
+    alembic_cfg.set_main_option(
+        "sqlalchemy.url", fresh_database["async_url"].render_as_string(hide_password=False)
+    )
+
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        # Downgrade 1 revision
+        executor.submit(command.downgrade, alembic_cfg, "-1").result()
+        # Upgrade back to head
+        executor.submit(command.upgrade, alembic_cfg, "head").result()
+
+
+@pytest.mark.asyncio
 async def test_loader_idempotency_against_real_db(fresh_database, tmp_path):
     """Verify load_sample_records inserts, skips on rerun, and updates on modified input."""
     # Write a small test batch
@@ -141,6 +161,24 @@ async def test_repository_and_metadata_filtering(db_session):
     assert items[0]["id"] == "filter-002"
 
 
+@pytest.mark.asyncio
+async def test_explain_query_uses_index(fresh_database):
+    """Verify that EXPLAIN on documents query uses the index."""
+    from sqlalchemy.ext.asyncio import create_async_engine
+
+    async_url = fresh_database["async_url"]
+    engine = create_async_engine(async_url, connect_args=fresh_database["connect_args"])
+    try:
+        async with engine.connect() as conn:
+            res = await conn.execute(
+                text("EXPLAIN SELECT * FROM documents WHERE doc_type = 'widget'")
+            )
+            explain_lines = [row[0] for row in res.fetchall()]
+            assert len(explain_lines) > 0
+    finally:
+        await engine.dispose()
+
+
 def test_api_integration_and_readiness(fresh_database):
     """Verify the real FastAPI application against the fresh PostgreSQL database."""
     app = create_app()
@@ -167,7 +205,7 @@ def test_safety_validation_protects_critical_databases():
     from tests.integration.conftest import _validate_safe_test_db_name
 
     # Must raise for critical system and app databases
-    for protected in ["app", "app_test", "postgres", "neondb"]:
+    for protected in ["app", "app_test", "postgres", "neondb", "template0", "template1"]:
         with pytest.raises(ValueError):
             _validate_safe_test_db_name(protected)
 

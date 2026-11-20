@@ -1,5 +1,9 @@
 """Unit test configuration and fixtures for FlutterFix."""
 
+import os
+
+os.environ.setdefault("DISABLE_SQLALCHEMY_CEXT", "1")
+
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 

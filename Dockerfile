@@ -16,7 +16,8 @@ COPY pyproject.toml uv.lock .python-version /app/
 # Install locked production dependencies without the root project
 RUN uv sync --frozen --no-dev --no-install-project
 
-# Copy source tree and install the project package
+# Copy README and source tree to install the project package
+COPY README.md /app/
 COPY src/ /app/src/
 RUN uv sync --frozen --no-dev
 
@@ -42,7 +43,7 @@ COPY --chown=app:app src/ /app/src/
 COPY --chown=app:app migrations/ /app/migrations/
 COPY --chown=app:app scripts/ /app/scripts/
 COPY --chown=app:app data/ /app/data/
-COPY --chown=app:app alembic.ini pyproject.toml /app/
+COPY --chown=app:app alembic.ini pyproject.toml README.md /app/
 
 USER app
 

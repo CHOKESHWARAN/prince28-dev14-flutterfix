@@ -65,11 +65,17 @@ dev = "python -m uvicorn flutterfix.api.main:create_app --factory --reload --no-
 lint = ["lint-check", "format-check"]
 lint-check = "python -m ruff check ."
 format-check = "python -m ruff format --check ."
-test = "python -m pytest tests/unit"
-cov = "python -m pytest tests/unit --cov=flutterfix --cov-report=term-missing --cov-report=html:htmlcov"
 migrate = "python -m alembic upgrade head"
 seed = "python scripts/load_db.py"
 
+[tool.poe.tasks.test]
+cmd = "python -m pytest tests/unit"
+env = { DISABLE_SQLALCHEMY_CEXT = "1" }
+
+[tool.poe.tasks.cov]
+cmd = "python -m pytest tests/unit --cov=flutterfix --cov-report=term-missing --cov-report=html:htmlcov"
+env = { DISABLE_SQLALCHEMY_CEXT = "1" }
+
 [tool.poe.tasks.test-integration]
 cmd = "python -m pytest tests/integration"
-env = { TEST_DATABASE_URL = "postgresql://app:app@localhost:5433/app_test" }
+env = { TEST_DATABASE_URL = "postgresql://app:app@localhost:5433/app_test", DISABLE_SQLALCHEMY_CEXT = "1" }

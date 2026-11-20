@@ -1,5 +1,9 @@
 """Integration test fixtures: creates a fresh, isolated PostgreSQL database per test session."""
 
+import os
+
+os.environ.setdefault("DISABLE_SQLALCHEMY_CEXT", "1")
+
 import asyncio
 import concurrent.futures
 import contextlib
@@ -162,32 +166,41 @@ def fresh_database(raw_test_db_url: str, test_db_name: str):
                     )
                     _validate_safe_test_db_name(test_db_name)
                     await conn.execute(text(f'DROP DATABASE IF EXISTS "{test_db_name}"'))
+
+                    # Verify that the temporary database no longer exists after teardown
+                    verify_stmt = text("SELECT 1 FROM pg_database WHERE datname = :datname")
+                    check_result = await conn.execute(verify_stmt, {"datname": test_db_name})
+                    if check_result.scalar() is not None:
+                        raise RuntimeError(
+                            f"Database cleanup verification failed: '{test_db_name}' "
+                            "still exists after DROP DATABASE."
+                        )
             finally:
                 await cleanup_engine.dispose()
 
-        with (
-            contextlib.suppress(Exception),
-            concurrent.futures.ThreadPoolExecutor() as executor,
-        ):
-            executor.submit(asyncio.run, _cleanup_database()).result()
+        try:
+            # Execute cleanup without hiding exceptions
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                executor.submit(asyncio.run, _cleanup_database()).result()
+        finally:
+            # Ensure environment restoration runs even if cleanup raises
+            if orig_env is not None:
+                os.environ["APP_ENV"] = orig_env
+            else:
+                os.environ.pop("APP_ENV", None)
 
-        if orig_env is not None:
-            os.environ["APP_ENV"] = orig_env
-        else:
-            os.environ.pop("APP_ENV", None)
+            if orig_db_url is not None:
+                os.environ["DATABASE_URL"] = orig_db_url
+            else:
+                os.environ.pop("DATABASE_URL", None)
 
-        if orig_db_url is not None:
-            os.environ["DATABASE_URL"] = orig_db_url
-        else:
-            os.environ.pop("DATABASE_URL", None)
+            get_settings.cache_clear()
 
-        get_settings.cache_clear()
-
-        with (
-            contextlib.suppress(Exception),
-            concurrent.futures.ThreadPoolExecutor() as executor,
-        ):
-            executor.submit(asyncio.run, _rebind_session()).result()
+            with (
+                contextlib.suppress(Exception),
+                concurrent.futures.ThreadPoolExecutor() as executor,
+            ):
+                executor.submit(asyncio.run, _rebind_session()).result()
 
 
 @pytest.fixture

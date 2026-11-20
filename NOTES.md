@@ -386,8 +386,8 @@ uv run python scripts/explain.py
 ### 5. Production Endpoint Verification Evidence
 - **Liveness Endpoint (`GET /health`)**:
   - HTTP Status: `200 OK`
-  - Response: `{"status":"ok","app":"flutterfix","env":"production","version":"a7ec63d6281804b7d16780e903238d00c61f4053","commit":"a7ec63d6281804b7d16780e903238d00c61f4053"}`
-  - Verified: Exactly matches deployed commit SHA `a7ec63d6281804b7d16780e903238d00c61f4053`.
+  - Response: `{"status":"ok","app":"flutterfix","env":"production","version":"266e11ee8f9d7dcf25178672a2189132a123e66c","commit":"266e11ee8f9d7dcf25178672a2189132a123e66c"}`
+  - Verified: Exactly matches deployed commit SHA `266e11ee8f9d7dcf25178672a2189132a123e66c`.
 - **Readiness Endpoint (`GET /ready`)**:
   - HTTP Status: `200 OK`
   - Response: `{"status":"ready","checks":{"database":true,"records_loaded":true}}`

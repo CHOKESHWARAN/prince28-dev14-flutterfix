@@ -68,17 +68,24 @@ jobs:
       - name: Trigger Render Deployment with Tested GHCR Image
         env:
           RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
-          IMAGE_TAG: ghcr.io/${{ github.repository }}:${{ github.sha }}
+          DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
         run: |
-          echo "Triggering Render deployment for image: $IMAGE_TAG"
-          # Render image-backed services support ?imgURL=<image>
-          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${RENDER_DEPLOY_HOOK}?imgURL=${IMAGE_TAG}")
-          if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
-            echo "Deploy hook with imgURL returned HTTP $HTTP_CODE. Falling back to standard deploy hook..."
-            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$RENDER_DEPLOY_HOOK")
+          IMAGE_TAG="ghcr.io/${{ github.repository }}:${DEPLOY_SHA}"
+          echo "Deploying exact image: $IMAGE_TAG"
+
+          # URL-encode IMAGE_TAG using python
+          ENCODED_TAG=$(python3 -c "import urllib.parse, sys; print(urllib.parse.quote(sys.argv[1]))" "$IMAGE_TAG")
+
+          if [[ "$RENDER_DEPLOY_HOOK" == *"?"* ]]; then
+            TARGET_URL="${RENDER_DEPLOY_HOOK}&imgURL=${ENCODED_TAG}"
+          else
+            TARGET_URL="${RENDER_DEPLOY_HOOK}?imgURL=${ENCODED_TAG}"
           fi
+
+          echo "Calling deploy hook with exact imgURL..."
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$TARGET_URL")
           if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
-            echo "::error::Render deploy hook returned unexpected HTTP status: $HTTP_CODE"
+            echo "::error::Render exact-image deployment failed with HTTP status: $HTTP_CODE"
             exit 1
           fi
           echo "Render deployment triggered successfully (HTTP $HTTP_CODE)."

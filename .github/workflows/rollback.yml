@@ -48,16 +48,23 @@ jobs:
       - name: Trigger Render Rollback Deployment with Target GHCR Image
         env:
           RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
-          IMAGE_TAG: ghcr.io/${{ github.repository }}:${{ inputs.target_sha }}
+          TARGET_SHA: ${{ inputs.target_sha }}
         run: |
-          echo "Triggering Render rollback deployment for image: $IMAGE_TAG"
-          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${RENDER_DEPLOY_HOOK}?imgURL=${IMAGE_TAG}")
-          if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
-            echo "Deploy hook with imgURL returned HTTP $HTTP_CODE. Falling back to standard deploy hook..."
-            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$RENDER_DEPLOY_HOOK")
+          IMAGE_TAG="ghcr.io/${{ github.repository }}:${TARGET_SHA}"
+          echo "Rolling back to exact image: $IMAGE_TAG"
+
+          ENCODED_TAG=$(python3 -c "import urllib.parse, sys; print(urllib.parse.quote(sys.argv[1]))" "$IMAGE_TAG")
+
+          if [[ "$RENDER_DEPLOY_HOOK" == *"?"* ]]; then
+            TARGET_URL="${RENDER_DEPLOY_HOOK}&imgURL=${ENCODED_TAG}"
+          else
+            TARGET_URL="${RENDER_DEPLOY_HOOK}?imgURL=${ENCODED_TAG}"
           fi
+
+          echo "Calling deploy hook with target imgURL..."
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$TARGET_URL")
           if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
-            echo "::error::Render deploy hook returned unexpected HTTP status: $HTTP_CODE"
+            echo "::error::Render exact-image rollback deploy hook failed with HTTP status: $HTTP_CODE"
             exit 1
           fi
           echo "Rollback deployment triggered successfully (HTTP $HTTP_CODE)."

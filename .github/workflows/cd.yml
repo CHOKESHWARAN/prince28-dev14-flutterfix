@@ -5,6 +5,7 @@ on:
     workflows: ["CI"]
     types: [completed]
     branches: ["main"]
+  workflow_dispatch:
 
 concurrency:
   group: production
@@ -14,13 +15,17 @@ jobs:
   deploy:
     name: Deploy to Render and Verify
     runs-on: ubuntu-latest
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
 
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - name: Validate Required Secrets and Variables
         env:
           RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
           LIVE_URL: ${{ vars.LIVE_URL }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
           MISSING=0
           if [ -z "$RENDER_DEPLOY_HOOK" ]; then
@@ -28,14 +33,39 @@ jobs:
             MISSING=1
           fi
           if [ -z "$LIVE_URL" ]; then
-            echo "::error::Missing required repository variable: LIVE_URL. Please configure the production service URL (e.g. https://prince28-dev14-flutterfix.onrender.com) in Settings > Secrets and variables > Actions > Variables."
+            echo "::error::Missing required repository variable: LIVE_URL. Please configure the production service URL in Settings > Secrets and variables > Actions > Variables."
             MISSING=1
+          fi
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::warning::DATABASE_URL secret is not set. Pre-deployment migrations will be skipped."
           fi
           if [ $MISSING -ne 0 ]; then
             echo "Deployment aborted due to missing configuration."
             exit 1
           fi
-          echo "All required deployment secrets and variables are present."
+          echo "Required deployment secrets and variables are present."
+
+      - name: Install uv and Python for Migrations
+        if: ${{ secrets.DATABASE_URL != '' }}
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          version: "latest"
+
+      - name: Set up Python 3.12
+        if: ${{ secrets.DATABASE_URL != '' }}
+        run: uv python install 3.12
+
+      - name: Run Database Migrations (Neon)
+        if: ${{ secrets.DATABASE_URL != '' }}
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          APP_ENV: production
+        run: |
+          echo "Executing pre-deployment database migrations against Neon PostgreSQL..."
+          uv sync --frozen --no-dev
+          uv run alembic upgrade head
+          echo "Migrations completed successfully."
 
       - name: Trigger Render Deployment
         env:
@@ -49,57 +79,10 @@ jobs:
           fi
           echo "Render deployment triggered successfully (HTTP $HTTP_CODE)."
 
-      - name: Await Deployment and Verify Health & Ready
+      - name: Run Automated Smoke Tests
         env:
           LIVE_URL: ${{ vars.LIVE_URL }}
-          EXPECTED_SHA: ${{ github.event.workflow_run.head_sha }}
+          EXPECTED_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
         run: |
-          echo "Target service URL: $LIVE_URL"
-          echo "Expected commit SHA: $EXPECTED_SHA"
-
-          echo "Polling /health for deployed commit SHA..."
-          ATTEMPTS=0
-          MAX_ATTEMPTS=36
-          DEPLOYED=0
-
-          while [ $ATTEMPTS -lt $MAX_ATTEMPTS ]; do
-            RESPONSE=$(curl -s -f "$LIVE_URL/health" || true)
-            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$LIVE_URL/health" || echo "000")
-
-            if [ "$HTTP_CODE" = "200" ]; then
-              echo "Liveness check returned HTTP 200: $RESPONSE"
-              if echo "$RESPONSE" | grep -q "$EXPECTED_SHA"; then
-                echo "Verified: /health is reporting deployed commit SHA: $EXPECTED_SHA"
-                DEPLOYED=1
-                break
-              else
-                echo "Service is reachable but running an older revision. Waiting for rollout..."
-              fi
-            else
-              echo "Attempt $((ATTEMPTS+1))/$MAX_ATTEMPTS: /health returned HTTP $HTTP_CODE, waiting 10s..."
-            fi
-            sleep 10
-            ATTEMPTS=$((ATTEMPTS+1))
-          done
-
-          if [ $DEPLOYED -ne 1 ]; then
-            echo "::error::Deployment verification failed: /health did not report deployed commit SHA $EXPECTED_SHA within timeout."
-            exit 1
-          fi
-
-          echo "Verifying /ready endpoint..."
-          READY_RESPONSE=$(curl -s -f "$LIVE_URL/ready" || true)
-          READY_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$LIVE_URL/ready" || echo "000")
-          echo "/ready returned HTTP $READY_CODE: $READY_RESPONSE"
-
-          if [ "$READY_CODE" != "200" ]; then
-            echo "::error::Readiness check failed: /ready returned HTTP $READY_CODE (expected 200)."
-            exit 1
-          fi
-
-          if ! echo "$READY_RESPONSE" | grep -q '"ready"'; then
-            echo "::error::Readiness check failed: /ready response status is not 'ready': $READY_RESPONSE"
-            exit 1
-          fi
-
-          echo "Deployment verification successful: Service is live and fully ready."
+          echo "Executing smoke tests against $LIVE_URL (Expected SHA: $EXPECTED_SHA)..."
+          python scripts/smoke.py --url "$LIVE_URL" --expected-sha "$EXPECTED_SHA" --wait --max-retries 36 --delay 10

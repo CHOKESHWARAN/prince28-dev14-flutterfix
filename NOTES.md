@@ -335,3 +335,90 @@ uv run python scripts/explain.py
 ### GitHub Actions CI results
 - Workflow file: `.github/workflows/ci.yml`
 - Verification: Sets up Python 3.12, uv, Ruff lint, Ruff format check, unit test suite with coverage, and PostgreSQL 17 + pgvector service container for integration tests. Configured without exposing secrets or Neon credentials.
+
+---
+
+## Day 5 — Deployment, CI/CD, Production Readiness & Verification
+
+### 1. Production Architecture Overview
+- **Hosting Provider:** Render Web Services (Singapore region)
+- **Runtime Model:** Multi-stage Docker container running FastAPI + Uvicorn under non-root user `app` (UID/GID 10001).
+- **Service Name:** `prince28-dev14-flutterfix`
+- **Service ID:** `srv-dbvu58ss728c73c00uug`
+- **Live Production URL:** `https://prince28-dev14-flutterfix.onrender.com`
+- **Database:** Serverless PostgreSQL 17 with `pgvector` hosted on Neon (`neondb`).
+- **Container Registry:** GitHub Container Registry (`ghcr.io/chokeshwaran/prince28-dev14-flutterfix`).
+
+### 2. Dynamic SHA Resolution Architecture
+- Render automatically injects `RENDER_GIT_COMMIT` at runtime with the deployed commit SHA.
+- `Settings` in `src/flutterfix/config.py` employs a Pydantic `@model_validator(mode="after")` that prefers `RENDER_GIT_COMMIT` whenever `git_sha` is unset or set to local defaults (`"local"`, `"dev"`).
+- This ensures zero-config, dynamic commit SHA reporting on `/health` without hardcoding fixed environment variables in Render that would become stale on future deploys.
+
+### 3. CI/CD Pipeline Implementation
+- **CI Workflow (`.github/workflows/ci.yml`)**:
+  - Triggers on every pull request to `main` and pushes to `main`.
+  - Job `lint and test`: Sets up PostgreSQL 17 + pgvector container, runs Ruff linting, Ruff formatting check, unit tests with coverage, and live integration tests.
+  - Job `build image`: Builds multi-stage Docker image on PRs without pushing; pushes SHA-tagged (`:${{ github.sha }}`) and `:latest` images to GHCR on merge to `main`.
+  - Status check names: Exactly `lint and test` and `build image`.
+- **CD Workflow (`.github/workflows/cd.yml`)**:
+  - Automatically triggered upon completion of `CI` on `main` and via manual `workflow_dispatch`.
+  - Serialized via `concurrency: group: production, cancel-in-progress: false`.
+  - Pre-flight validation for required repository secrets (`RENDER_DEPLOY_HOOK`, `DATABASE_URL`) and variable (`LIVE_URL`).
+  - Pre-deployment database migrations: Runs `alembic upgrade head` against Neon PostgreSQL before triggering the application rollout.
+  - Deployment trigger: Dispatches webhook request to Render Deploy Hook.
+  - Automated smoke testing: Invokes `scripts/smoke.py --wait` to verify `/health` reports the exact commit SHA, `/ready` reports HTTP 200, and `/v1/documents` serves data.
+- **Rollback Workflow (`.github/workflows/rollback.yml`)**:
+  - Manual emergency trigger via `workflow_dispatch` taking `target_sha` and `reason`.
+  - Strictly skips database migrations during rollbacks to maintain schema compatibility.
+  - Smoke-tests the target rollback deployment.
+- **Nightly Health Check (`.github/workflows/nightly.yml`)**:
+  - Cron trigger running daily at 00:00 UTC.
+  - Executes smoke test against live production service.
+
+### 4. Automated Smoke Test Suite (`scripts/smoke.py`)
+- Verifies:
+  1. `/health`: Returns HTTP 200 and matches expected commit SHA.
+  2. `/ready`: Returns HTTP 200 with `status: "ready"`, `checks.database: true`, and `checks.records_loaded: true`.
+  3. `/v1/documents?limit=1`: Returns HTTP 200 with valid document records and metadata.
+- Supports CLI arguments `--url`, `--expected-sha`, `--wait`, `--max-retries`, and `--delay`.
+- Tested and verified: 100% pass against live Render service.
+
+### 5. Production Endpoint Verification Evidence
+- **Liveness Endpoint (`GET /health`)**:
+  - HTTP Status: `200 OK`
+  - Response: `{"status":"ok","app":"flutterfix","env":"production","version":"2e9988d13b686d34c1c2ff114cb55ff13b2307d1","commit":"2e9988d13b686d34c1c2ff114cb55ff13b2307d1"}`
+  - Verified: Exactly matches deployed commit SHA.
+- **Readiness Endpoint (`GET /ready`)**:
+  - HTTP Status: `200 OK`
+  - Response: `{"status":"ready","checks":{"database":true,"records_loaded":true}}`
+  - Verified: Active Neon PostgreSQL connection and 20 sample documents verified.
+- **Documents Endpoint (`GET /v1/documents?limit=1`)**:
+  - HTTP Status: `200 OK`
+  - Response: Total 20 records, item `001` ("FlatButton to TextButton Migration").
+
+### 6. Secrets & Environment Variables Configuration Checklist
+- **GitHub Repository Secrets** (`Settings > Secrets and variables > Actions > Secrets`):
+  - `RENDER_DEPLOY_HOOK`: Render Deploy Hook URL for triggering rollouts.
+  - `DATABASE_URL`: Production Neon PostgreSQL connection string (for pre-deploy migrations).
+- **GitHub Repository Variables** (`Settings > Secrets and variables > Actions > Variables`):
+  - `LIVE_URL`: `https://prince28-dev14-flutterfix.onrender.com`
+- **Render Service Environment Variables** (`Environment` tab in Render Dashboard):
+  - `APP_ENV`: `production`
+  - `DATABASE_URL`: Production Neon PostgreSQL connection string.
+
+### 7. Branch Protection Rules for `main`
+- In GitHub repository settings (`Settings > Branches > Branch protection rules > Add rule`):
+  - Branch name pattern: `main`
+  - Require a pull request before merging (Require approvals: 1).
+  - Require status checks to pass before merging:
+    - `lint and test`
+    - `build image`
+  - Do not allow bypassing the above settings.
+
+### 8. Monitoring & Availability (UptimeRobot)
+- **Monitor Type:** HTTP(s) Monitor
+- **Monitor Name:** `FlutterFix Production API`
+- **Monitoring URL:** `https://prince28-dev14-flutterfix.onrender.com/ready`
+- **Check Interval:** Every 5 minutes
+- **Expected HTTP Code:** `200 OK`
+- **Alert Contacts:** Configured for instant downtime notification via email.

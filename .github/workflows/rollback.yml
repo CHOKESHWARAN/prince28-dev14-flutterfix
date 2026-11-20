@@ -1,0 +1,66 @@
+name: Rollback
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_sha:
+        description: "Target commit SHA to roll back to"
+        required: true
+      reason:
+        description: "Reason for rollback"
+        required: false
+        default: "Emergency production rollback"
+
+concurrency:
+  group: production
+  cancel-in-progress: false
+
+jobs:
+  rollback:
+    name: Manual Rollback (Skip Migrations)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate Required Secrets and Variables
+        env:
+          RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
+          LIVE_URL: ${{ vars.LIVE_URL }}
+        run: |
+          MISSING=0
+          if [ -z "$RENDER_DEPLOY_HOOK" ]; then
+            echo "::error::Missing required repository secret: RENDER_DEPLOY_HOOK."
+            MISSING=1
+          fi
+          if [ -z "$LIVE_URL" ]; then
+            echo "::error::Missing required repository variable: LIVE_URL."
+            MISSING=1
+          fi
+          if [ $MISSING -ne 0 ]; then
+            exit 1
+          fi
+          echo "Rollback initiated. Target SHA: ${{ inputs.target_sha }}"
+          echo "Rollback reason: ${{ inputs.reason }}"
+          echo "Notice: Database migrations are skipped during rollback as required."
+
+      - name: Trigger Render Rollback Deployment
+        env:
+          RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
+        run: |
+          echo "Triggering Render rollback deploy..."
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$RENDER_DEPLOY_HOOK")
+          if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
+            echo "::error::Render deploy hook returned status: $HTTP_CODE"
+            exit 1
+          fi
+          echo "Rollback triggered successfully (HTTP $HTTP_CODE)."
+
+      - name: Run Smoke Test for Rollback Verification
+        env:
+          LIVE_URL: ${{ vars.LIVE_URL }}
+          TARGET_SHA: ${{ inputs.target_sha }}
+        run: |
+          echo "Awaiting rollback deployment verification..."
+          python scripts/smoke.py --url "$LIVE_URL" --expected-sha "$TARGET_SHA" --wait --max-retries 36 --delay 10

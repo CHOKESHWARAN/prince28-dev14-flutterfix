@@ -67,6 +67,7 @@ lint-check = "python -m ruff check ."
 format-check = "python -m ruff format --check ."
 migrate = "python -m alembic upgrade head"
 seed = "python scripts/load_db.py"
+smoke = "python scripts/smoke.py"
 
 [tool.poe.tasks.test]
 cmd = "python -m pytest tests/unit"

@@ -95,7 +95,7 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository }}
           tags: |
-            type=sha,prefix=,format=full
+            type=sha,prefix=,format=long
             type=sha,prefix=,format=short
             latest
 

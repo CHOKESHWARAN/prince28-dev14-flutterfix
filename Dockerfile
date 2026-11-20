@@ -10,14 +10,13 @@ ENV UV_LINK_MODE=copy \
 
 WORKDIR /app
 
-# Copy dependency specifications first to leverage Docker layer caching
-COPY pyproject.toml uv.lock .python-version /app/
+# Copy dependency specifications and project readme to leverage Docker layer caching
+COPY pyproject.toml uv.lock .python-version README.md /app/
 
 # Install locked production dependencies without the root project
 RUN uv sync --frozen --no-dev --no-install-project
 
-# Copy README and source tree to install the project package
-COPY README.md /app/
+# Copy source tree and install the project package
 COPY src/ /app/src/
 RUN uv sync --frozen --no-dev
 

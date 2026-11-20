@@ -45,17 +45,22 @@ jobs:
           echo "Rollback reason: ${{ inputs.reason }}"
           echo "Notice: Database migrations are skipped during rollback as required."
 
-      - name: Trigger Render Rollback Deployment
+      - name: Trigger Render Rollback Deployment with Target GHCR Image
         env:
           RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
+          IMAGE_TAG: ghcr.io/${{ github.repository }}:${{ inputs.target_sha }}
         run: |
-          echo "Triggering Render rollback deploy..."
-          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$RENDER_DEPLOY_HOOK")
+          echo "Triggering Render rollback deployment for image: $IMAGE_TAG"
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${RENDER_DEPLOY_HOOK}?imgURL=${IMAGE_TAG}")
           if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
-            echo "::error::Render deploy hook returned status: $HTTP_CODE"
+            echo "Deploy hook with imgURL returned HTTP $HTTP_CODE. Falling back to standard deploy hook..."
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$RENDER_DEPLOY_HOOK")
+          fi
+          if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
+            echo "::error::Render deploy hook returned unexpected HTTP status: $HTTP_CODE"
             exit 1
           fi
-          echo "Rollback triggered successfully (HTTP $HTTP_CODE)."
+          echo "Rollback deployment triggered successfully (HTTP $HTTP_CODE)."
 
       - name: Run Smoke Test for Rollback Verification
         env:

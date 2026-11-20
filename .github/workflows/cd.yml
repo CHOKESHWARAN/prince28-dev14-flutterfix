@@ -37,27 +37,25 @@ jobs:
             MISSING=1
           fi
           if [ -z "$DATABASE_URL" ]; then
-            echo "::warning::DATABASE_URL secret is not set. Pre-deployment migrations will be skipped."
+            echo "::error::Missing required repository secret: DATABASE_URL. Please configure the Neon PostgreSQL connection string in Settings > Secrets and variables > Actions > Secrets."
+            MISSING=1
           fi
           if [ $MISSING -ne 0 ]; then
             echo "Deployment aborted due to missing configuration."
             exit 1
           fi
-          echo "Required deployment secrets and variables are present."
+          echo "All required deployment secrets (RENDER_DEPLOY_HOOK, DATABASE_URL) and variables (LIVE_URL) are present."
 
       - name: Install uv and Python for Migrations
-        if: ${{ secrets.DATABASE_URL != '' }}
         uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
           version: "latest"
 
       - name: Set up Python 3.12
-        if: ${{ secrets.DATABASE_URL != '' }}
         run: uv python install 3.12
 
       - name: Run Database Migrations (Neon)
-        if: ${{ secrets.DATABASE_URL != '' }}
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           APP_ENV: production
@@ -67,12 +65,18 @@ jobs:
           uv run alembic upgrade head
           echo "Migrations completed successfully."
 
-      - name: Trigger Render Deployment
+      - name: Trigger Render Deployment with Tested GHCR Image
         env:
           RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
+          IMAGE_TAG: ghcr.io/${{ github.repository }}:${{ github.sha }}
         run: |
-          echo "Triggering Render deployment via deploy hook..."
-          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$RENDER_DEPLOY_HOOK")
+          echo "Triggering Render deployment for image: $IMAGE_TAG"
+          # Render image-backed services support ?imgURL=<image>
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${RENDER_DEPLOY_HOOK}?imgURL=${IMAGE_TAG}")
+          if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
+            echo "Deploy hook with imgURL returned HTTP $HTTP_CODE. Falling back to standard deploy hook..."
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$RENDER_DEPLOY_HOOK")
+          fi
           if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
             echo "::error::Render deploy hook returned unexpected HTTP status: $HTTP_CODE"
             exit 1

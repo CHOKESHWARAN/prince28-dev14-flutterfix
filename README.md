@@ -3,7 +3,6 @@
 [![CI](https://github.com/CHOKESHWARAN/prince28-dev14-flutterfix/actions/workflows/ci.yml/badge.svg)](https://github.com/CHOKESHWARAN/prince28-dev14-flutterfix/actions/workflows/ci.yml)
 [![CD](https://github.com/CHOKESHWARAN/prince28-dev14-flutterfix/actions/workflows/cd.yml/badge.svg)](https://github.com/CHOKESHWARAN/prince28-dev14-flutterfix/actions/workflows/cd.yml)
 [![Live Service](https://img.shields.io/badge/Render-Live%20Production-brightgreen?logo=render)](https://prince28-dev14-flutterfix.onrender.com/health)
-[![Uptime Monitoring](https://img.shields.io/badge/UptimeRobot-100%25%20Operational-brightgreen)](https://prince28-dev14-flutterfix.onrender.com/ready)
 
 A Flutter and Dart mentor that answers from official docs and breaking-changes pages for the user's Flutter version.
 

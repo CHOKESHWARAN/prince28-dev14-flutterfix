@@ -386,8 +386,8 @@ uv run python scripts/explain.py
 ### 5. Production Endpoint Verification Evidence
 - **Liveness Endpoint (`GET /health`)**:
   - HTTP Status: `200 OK`
-  - Response: `{"status":"ok","app":"flutterfix","env":"production","version":"2e9988d13b686d34c1c2ff114cb55ff13b2307d1","commit":"2e9988d13b686d34c1c2ff114cb55ff13b2307d1"}`
-  - Verified: Exactly matches deployed commit SHA.
+  - Response: `{"status":"ok","app":"flutterfix","env":"production","version":"a7ec63d6281804b7d16780e903238d00c61f4053","commit":"a7ec63d6281804b7d16780e903238d00c61f4053"}`
+  - Verified: Exactly matches deployed commit SHA `a7ec63d6281804b7d16780e903238d00c61f4053`.
 - **Readiness Endpoint (`GET /ready`)**:
   - HTTP Status: `200 OK`
   - Response: `{"status":"ready","checks":{"database":true,"records_loaded":true}}`
@@ -399,7 +399,7 @@ uv run python scripts/explain.py
 ### 6. Secrets & Environment Variables Configuration Checklist
 - **GitHub Repository Secrets** (`Settings > Secrets and variables > Actions > Secrets`):
   - `RENDER_DEPLOY_HOOK`: Render Deploy Hook URL for triggering rollouts.
-  - `DATABASE_URL`: Production Neon PostgreSQL connection string (for pre-deploy migrations).
+  - `DATABASE_URL`: Production Neon PostgreSQL connection string (strictly required for pre-deploy migrations).
 - **GitHub Repository Variables** (`Settings > Secrets and variables > Actions > Variables`):
   - `LIVE_URL`: `https://prince28-dev14-flutterfix.onrender.com`
 - **Render Service Environment Variables** (`Environment` tab in Render Dashboard):
@@ -409,8 +409,8 @@ uv run python scripts/explain.py
 ### 7. Branch Protection Rules for `main`
 - In GitHub repository settings (`Settings > Branches > Branch protection rules > Add rule`):
   - Branch name pattern: `main`
-  - Require a pull request before merging (Require approvals: 1).
-  - Require status checks to pass before merging:
+  - Check **Require a pull request before merging** (Note: in a single-owner repository, leave required approvals at 0 or ensure owner is permitted to merge so the sole owner is not blocked).
+  - Check **Require status checks to pass before merging**:
     - `lint and test`
     - `build image`
   - Do not allow bypassing the above settings.
@@ -418,7 +418,7 @@ uv run python scripts/explain.py
 ### 8. Monitoring & Availability (UptimeRobot)
 - **Monitor Type:** HTTP(s) Monitor
 - **Monitor Name:** `FlutterFix Production API`
-- **Monitoring URL:** `https://prince28-dev14-flutterfix.onrender.com/ready`
+- **Monitoring URL:** `https://prince28-dev14-flutterfix.onrender.com/health`
 - **Check Interval:** Every 5 minutes
 - **Expected HTTP Code:** `200 OK`
-- **Alert Contacts:** Configured for instant downtime notification via email.
+- **Alert Contacts:** Configured in user UptimeRobot dashboard for instant downtime notifications.

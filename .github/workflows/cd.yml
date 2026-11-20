@@ -6,6 +6,10 @@ on:
     types: [completed]
     branches: ["main"]
   workflow_dispatch:
+    inputs:
+      target_sha:
+        description: "Target commit SHA to deploy (defaults to HEAD)"
+        required: false
 
 concurrency:
   group: production
@@ -46,6 +50,19 @@ jobs:
           fi
           echo "All required deployment secrets (RENDER_DEPLOY_HOOK, DATABASE_URL) and variables (LIVE_URL) are present."
 
+      - name: Resolve Deployment Commit SHA
+        id: resolve-sha
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_run" ]; then
+            SHA="${{ github.event.workflow_run.head_sha }}"
+          elif [ -n "${{ inputs.target_sha }}" ]; then
+            SHA="${{ inputs.target_sha }}"
+          else
+            SHA="${{ github.sha }}"
+          fi
+          echo "deploy_sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "Selected deployment SHA: $SHA"
+
       - name: Install uv and Python for Migrations
         uses: astral-sh/setup-uv@v5
         with:
@@ -68,9 +85,10 @@ jobs:
       - name: Trigger Render Deployment with Tested GHCR Image
         env:
           RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
-          DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+          DEPLOY_SHA: ${{ steps.resolve-sha.outputs.deploy_sha }}
         run: |
-          IMAGE_TAG="ghcr.io/${{ github.repository }}:${DEPLOY_SHA}"
+          REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          IMAGE_TAG="ghcr.io/${REPO_LOWER}:${DEPLOY_SHA}"
           echo "Deploying exact image: $IMAGE_TAG"
 
           # URL-encode IMAGE_TAG using python
@@ -93,7 +111,7 @@ jobs:
       - name: Run Automated Smoke Tests
         env:
           LIVE_URL: ${{ vars.LIVE_URL }}
-          EXPECTED_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+          EXPECTED_SHA: ${{ steps.resolve-sha.outputs.deploy_sha }}
         run: |
           echo "Executing smoke tests against $LIVE_URL (Expected SHA: $EXPECTED_SHA)..."
           python scripts/smoke.py --url "$LIVE_URL" --expected-sha "$EXPECTED_SHA" --wait --max-retries 36 --delay 10

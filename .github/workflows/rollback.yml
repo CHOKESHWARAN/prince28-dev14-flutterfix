@@ -50,7 +50,8 @@ jobs:
           RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
           TARGET_SHA: ${{ inputs.target_sha }}
         run: |
-          IMAGE_TAG="ghcr.io/${{ github.repository }}:${TARGET_SHA}"
+          REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          IMAGE_TAG="ghcr.io/${REPO_LOWER}:${TARGET_SHA}"
           echo "Rolling back to exact image: $IMAGE_TAG"
 
           ENCODED_TAG=$(python3 -c "import urllib.parse, sys; print(urllib.parse.quote(sys.argv[1]))" "$IMAGE_TAG")

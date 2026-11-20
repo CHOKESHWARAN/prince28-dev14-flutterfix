@@ -10,6 +10,50 @@ def test_health_is_ok(client):
     assert response.json()["status"] == "ok"
 
 
+def test_health_sha_fallback_to_render_git_commit():
+    from fastapi.testclient import TestClient
+
+    from flutterfix.api.main import create_app
+
+    test_settings = Settings(
+        app_env="local",
+        git_sha="local",
+        render_git_commit="396aeb7510f61bc9f2e3f97300ec76cbfa4f5031",
+        _env_file=None,
+    )
+    assert test_settings.git_sha == "396aeb7510f61bc9f2e3f97300ec76cbfa4f5031"
+
+    app = create_app(settings=test_settings)
+    c = TestClient(app)
+    resp = c.get("/health")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["version"] == "396aeb7510f61bc9f2e3f97300ec76cbfa4f5031"
+    assert data["commit"] == "396aeb7510f61bc9f2e3f97300ec76cbfa4f5031"
+
+
+def test_settings_sha_fallback_matrix():
+    # 1. 'local' falls back to render_git_commit
+    s1 = Settings(app_env="local", git_sha="local", render_git_commit="sha123", _env_file=None)
+    assert s1.git_sha == "sha123"
+
+    # 2. 'dev' falls back to render_git_commit
+    s2 = Settings(app_env="local", git_sha="dev", render_git_commit="sha123", _env_file=None)
+    assert s2.git_sha == "sha123"
+
+    # 3. empty string falls back to render_git_commit
+    s3 = Settings(app_env="local", git_sha="", render_git_commit="sha123", _env_file=None)
+    assert s3.git_sha == "sha123"
+
+    # 4. Explicit non-local/dev SHA is preserved
+    s4 = Settings(app_env="local", git_sha="customsha", render_git_commit="sha123", _env_file=None)
+    assert s4.git_sha == "customsha"
+
+    # 5. Without render_git_commit, default is preserved
+    s5 = Settings(app_env="local", git_sha="dev", render_git_commit=None, _env_file=None)
+    assert s5.git_sha == "dev"
+
+
 def test_ready_when_records_loaded(client):
     response = client.get("/ready")
     assert response.status_code == 200

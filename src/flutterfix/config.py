@@ -4,7 +4,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import SecretStr
+from pydantic import SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -28,6 +28,13 @@ class Settings(BaseSettings):
 
     # Embedded commit SHA / release version
     git_sha: str = "dev"
+    render_git_commit: str | None = None
+
+    @model_validator(mode="after")
+    def resolve_git_sha(self) -> "Settings":
+        if self.render_git_commit and (not self.git_sha or self.git_sha in {"dev", "local"}):
+            self.git_sha = self.render_git_commit
+        return self
 
     def validate_database_config(self) -> None:
         if self.app_env == "production" and self.database_url is None:

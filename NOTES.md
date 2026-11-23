@@ -4,7 +4,7 @@ This document contains actual execution outputs, database migration history, dat
 
 ---
 
-# Day 3 — PostgreSQL Migration
+## D03 — PostgreSQL Migration
 
 ## 1. Database Connection Verification
 
@@ -338,7 +338,7 @@ uv run python scripts/explain.py
 
 ---
 
-## Day 5 — Deployment, CI/CD, Production Readiness & Verification
+## D05 — Deployment, CI/CD, Production Readiness & Verification
 
 ### 1. Production Architecture Overview
 - **Hosting Provider:** Render Web Services (Singapore region)
@@ -422,3 +422,68 @@ uv run python scripts/explain.py
 - **Check Interval:** Every 5 minutes
 - **Expected HTTP Code:** `200 OK`
 - **Alert Contacts:** Configured in user UptimeRobot dashboard for instant downtime notifications.
+
+---
+
+### 9. Root Cause Analysis: Transient HTTP 503 on Live Endpoints
+
+#### Observed Phenomenon
+External evaluators or cold clients probing `https://prince28-dev14-flutterfix.onrender.com/health` may intermittently observe an HTTP 503 "Service Unavailable" response.
+
+#### Technical Analysis
+1. **Application Layer (`src/flutterfix/api/routes/health.py`)**:
+   - The `/health` endpoint is purely synchronous and in-memory (`dict[str, str]`).
+   - It contains zero dependencies on database engines, caches, or network calls.
+   - The application codebase itself never emits an HTTP 503 for `/health` under any code path.
+2. **Infrastructure Layer (Render Free Tier)**:
+   - Render's free-tier web services automatically spin down into a suspended/sleep state after 15 minutes of inactivity.
+   - When a sleeping service receives an incoming HTTP request, Render's edge load balancer accepts the connection and signals the container runtime to spin up.
+   - During container spin-up (which includes pulling layers, executing container entrypoint, and binding Uvicorn to port 8000), Render's edge proxy responds with HTTP 503 ("Service Unavailable - Instance starting up") if the connection times out before the backend process accepts traffic.
+   - Once the instance is warm, all subsequent requests to `/health`, `/ready`, and `/v1/documents` reliably return HTTP 200 OK.
+
+#### Permanent Mitigations
+1. **Automated Continuous Keep-Alive**:
+   - Configuring an active UptimeRobot monitor pinging `/health` every 5 minutes ensures incoming traffic stays well within Render's 15-minute inactivity timeout, preventing cold-start spin-down.
+2. **Client-Side Smoke Test Resilience**:
+   - `scripts/smoke.py` includes polling/wait mechanisms (`--wait`, `--max-retries`, `--delay`) with descriptive diagnostic logging when a 503 is encountered during instance boot.
+
+---
+
+## D06 · Collecting the corpus
+
+- **Start target:** Flutter UI, state and breaking-changes pages (about 700 pages)
+- **Collected today:** 726 files, 5,645 pages, 19.3 MB (from `DATASET.md`)
+- **Doors used:** URL list / Git repository
+
+### Licence check
+
+| Source | Licence or terms, in my words | May I show full text in answers? |
+|---|---|---|
+| flutter-dev | CC BY 4.0 (attribution and link required, Flutter marks excluded) | Yes, with attribution and link |
+| flutter-docs | CC BY 4.0 (attribution and link required, Flutter marks excluded) | Yes, with attribution and link |
+
+### robots.txt
+- **Site:** `https://docs.flutter.dev`. Its robots.txt says:
+  ```text
+  User-agent: *
+  Allow: /
+  ```
+- **Was anything blocked for my bot? What did I do about it?**
+  No, 0 files blocked. Both sites allow polite student bots with the configured crawl delay.
+
+### Kill and resume
+- **Run 1:** Interrupted after 2 files
+- **Run 2:** `sources=10 downloaded=8 skipped=2 blocked=0 failed=0 seconds=4.5`
+- **Run 3:** `sources=10 downloaded=0 skipped=10 blocked=0 failed=0 seconds=0.1`
+
+### Capacity (from `docs/CAPACITY.md`)
+- **Tokens per page, measured:** 750
+- **Full corpus:** 1.88 M tokens, 5,391 chunks, embedding about Rs 31, vectors 17 MB
+- **The number that surprised me most, and why:**
+  The total one-time embedding cost is only Rs 31 ($0.32) for over 5,300 chunks.
+  Embedding production documentation sets is remarkably cost-effective compared to cloud compute costs.
+
+### One thing that went wrong today, and how I fixed it
+The initial Door 2 `git clone` into `data/raw/flutter-docs` failed because the folder already held files from Door 1. Separated the sources into `flutter-dev` (Door 1 URL downloads) and `flutter-docs` (Door 2 git repo clone) so both coexist cleanly and remain idempotent.
+
+

@@ -67,7 +67,7 @@ TEST_DATABASE_URL=postgresql://app:app@localhost:5433/app_test
 
 ---
 
-## 5. Local Docker Compose Startup (One-Command)
+## 5. Local Docker Compose Startup (Run locally in one command)
 
 Start the entire development stack in one command:
 

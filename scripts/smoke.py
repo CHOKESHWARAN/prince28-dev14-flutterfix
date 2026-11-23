@@ -35,6 +35,9 @@ def check_health(base_url: str, expected_sha: str | None = None) -> tuple[bool, 
                 True,
                 f"HTTP 200 OK (commit: {actual_sha}, app: {app_name}, env: {env_name})",
             )
+    except urllib.error.HTTPError as e:
+        detail = " (Render free-tier instance cold-starting or waking up)" if e.code == 503 else ""
+        return False, f"Request failed: HTTPError: HTTP {e.code} {e.reason}{detail}"
     except Exception as e:
         return False, f"Request failed: {type(e).__name__}: {e}"
 
@@ -55,6 +58,9 @@ def check_ready(base_url: str) -> tuple[bool, str]:
             if not checks.get("records_loaded"):
                 return False, "Records loaded check failed in /ready"
             return True, f"HTTP 200 OK (status: ready, checks: {checks})"
+    except urllib.error.HTTPError as e:
+        detail = " (Render free-tier instance cold-starting or waking up)" if e.code == 503 else ""
+        return False, f"Request failed: HTTPError: HTTP {e.code} {e.reason}{detail}"
     except Exception as e:
         return False, f"Request failed: {type(e).__name__}: {e}"
 
@@ -75,6 +81,9 @@ def check_documents(base_url: str) -> tuple[bool, str]:
                 True,
                 f"HTTP 200 OK (total records: {total}, first item ID: '{items[0].get('id')}')",
             )
+    except urllib.error.HTTPError as e:
+        detail = " (Render free-tier instance cold-starting or waking up)" if e.code == 503 else ""
+        return False, f"Request failed: HTTPError: HTTP {e.code} {e.reason}{detail}"
     except Exception as e:
         return False, f"Request failed: {type(e).__name__}: {e}"
 

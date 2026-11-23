@@ -1,0 +1,19 @@
+# Sources for FlutterFix. One row per file to download. Lines starting with # are notes.
+# Start target: Flutter UI, state and breaking-changes pages (about 700 pages)
+# Where to look:
+# https://docs.flutter.dev/
+# https://docs.flutter.dev/release/breaking-changes
+# https://github.com/flutter/website
+# https://dart.dev/
+# Terms on my project card: Flutter and Dart site content CC BY 4.0 (Flutter marks excluded); attribute and link the source page.
+url,source,licence,title
+https://docs.flutter.dev/ui,flutter-dev,"CC BY 4.0","User interface documentation"
+https://docs.flutter.dev/ui/widgets,flutter-dev,"CC BY 4.0","Widget catalog"
+https://docs.flutter.dev/ui/layout,flutter-dev,"CC BY 4.0","Layout in Flutter"
+https://docs.flutter.dev/data-and-backend/state-mgmt/intro,flutter-dev,"CC BY 4.0","Introduction to state management"
+https://docs.flutter.dev/data-and-backend/state-mgmt/ephemeral-vs-app,flutter-dev,"CC BY 4.0","Differentiate between ephemeral state and app state"
+https://docs.flutter.dev/data-and-backend/state-mgmt/simple,flutter-dev,"CC BY 4.0","Simple app state management"
+https://docs.flutter.dev/release/breaking-changes,flutter-dev,"CC BY 4.0","Breaking changes index"
+https://docs.flutter.dev/release/breaking-changes/buttons,flutter-dev,"CC BY 4.0","FlatButton, RaisedButton, and OutlineButton migration"
+https://docs.flutter.dev/release/breaking-changes/scaffold-messenger,flutter-dev,"CC BY 4.0","ScaffoldMessenger migration"
+https://docs.flutter.dev/release/breaking-changes/theme-data-accent-properties,flutter-dev,"CC BY 4.0","ThemeData accent properties deprecation"

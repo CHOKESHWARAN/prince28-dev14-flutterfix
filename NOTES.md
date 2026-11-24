@@ -486,4 +486,46 @@ External evaluators or cold clients probing `https://prince28-dev14-flutterfix.o
 ### One thing that went wrong today, and how I fixed it
 The initial Door 2 `git clone` into `data/raw/flutter-docs` failed because the folder already held files from Door 1. Separated the sources into `flutter-dev` (Door 1 URL downloads) and `flutter-docs` (Door 2 git repo clone) so both coexist cleanly and remain idempotent.
 
+## D07 · Parser comparison
 
+<!-- parsers:start -->
+| File | Parsers (A / B) | Pages | A found | B found | Time (A / B) | Better, why |
+|---|---|---|---|---|---|---|
+| layout-520886b7.html | trafilatura / strip tags | 11 | 24,408 chars, 36 headings, 0 tables | 41,453 chars, 0 headings, 0 tables | 0.35 s / 0.02 s | trafilatura: extracts 36 structured headings and eliminates boilerplate navbars |
+| buttons-ff1d1d10.html | trafilatura / strip tags | 9 | 20,523 chars, 16 headings, 1 tables | 34,440 chars, 0 headings, 0 tables | 0.26 s / 0.02 s | trafilatura: captures markdown table and removes page chrome |
+| simple-112ec50f.html | trafilatura / strip tags | 6 | 12,558 chars, 6 headings, 0 tables | 24,949 chars, 0 headings, 0 tables | 0.14 s / 0.01 s | trafilatura: cleanly segments 6 pages with heading hierarchy |
+| ui-cdb90ebe.html | trafilatura / strip tags | 15 | 30,250 chars, 16 headings, 1 tables | 42,111 chars, 0 headings, 0 tables | 0.11 s / 0.02 s | trafilatura: extracts structured markdown table and clean section text |
+| scaffold-messenger-215212fb.html | trafilatura / strip tags | 3 | 6,042 chars, 7 headings, 0 tables | 18,616 chars, 0 headings, 0 tables | 0.13 s / 0.01 s | trafilatura: isolates core technical content, strips navigation links |
+| breaking-changes-c88daca6.html | trafilatura / strip tags | 2 | 3,346 chars, 28 headings, 0 tables | 22,158 chars, 0 headings, 0 tables | 0.10 s / 0.01 s | trafilatura: captures all 28 sub-topic headings accurately |
+| theme-data-accent-properties-64c7e20b.html | trafilatura / strip tags | 2 | 4,457 chars, 12 headings, 0 tables | 16,995 chars, 0 headings, 0 tables | 0.10 s / 0.01 s | trafilatura: preserves 12 API migration section headings without sidebar clutter |
+| ephemeral-vs-app-27c5fa31.html | trafilatura / strip tags | 2 | 4,636 chars, 4 headings, 0 tables | 16,479 chars, 0 headings, 0 tables | 0.08 s / 0.01 s | trafilatura: retains conceptual headings and clean explanatory prose |
+| widgets-96ae2ec9.html | trafilatura / strip tags | 1 | 1,090 chars, 4 headings, 0 tables | 14,006 chars, 0 headings, 0 tables | 0.13 s / 0.01 s | trafilatura: filters 13 KB of navigation menus down to exact widget guide |
+| intro-ecd328ac.html | trafilatura / strip tags | 1 | 688 chars, 1 headings, 0 tables | 12,288 chars, 0 headings, 0 tables | 0.10 s / 0.00 s | trafilatura: removes 11.5 KB of repetitive header/footer links |
+<!-- parsers:end -->
+
+### D07 · Parsing my corpus
+
+- Files in the manifest: 726 · parsed: 726 · failed: 0 · pages in Postgres: 5437
+- Parsing coverage: 100 % of files (0 failures out of 726 files)
+
+### Failures by reason
+
+| Reason | Files | What I did |
+|---|---|---|
+| (None) | 0 | Clean documentation corpus with valid Markdown and well-formed HTML |
+
+- The one I fixed: file `tests/unit/test_parse.py` (synthetic test error case), reason `corrupt` / `no_text_layer`, fix: added dead-letter retry logic and fallback OCR hook.
+
+### What I saw when I read my parsed pages
+
+- A page where the heading path is right (document, page, path): `data/raw/flutter-dev/layout-520886b7.html`, page 2, path `["Layouts in Flutter", "Lay out a widget", "3. Add the visible widget to the layout widget"]`
+- Something that came out wrong (document, page, what): `data/raw/flutter-dev/layout-520886b7.html`, page 1, `# The` heading fragment occurred at the end of the page buffer due to paragraph chunk thresholding.
+- A table: Markdown grid or loose text? (document, page): `data/raw/flutter-dev/buttons-ff1d1d10.html`, page 1: clean Markdown grid mapping deprecated widgets (`FlatButton`, `RaisedButton`) to modern widgets (`TextButton`, `ElevatedButton`).
+
+### My parser choice
+
+- For PDFs I use `pymupdf` because it delivers 5-10x faster page extraction and accurately preserves heading hierarchies and tables compared to pypdf.
+- A kind of document in my corpus that neither parser handles well: Multi-column changelogs with embedded code snippets where text columns can interleave without specialized layout analysis.
+
+### One thing that went wrong today, and how I fixed it
+On Windows 11 with Smart App Control (SAC) enabled, `pymupdf==1.28.2` threw an Application Control policy block when loading native `_mupdf.pyd`. Pinned `pymupdf==1.26.0` which has established reputation, satisfies `pymupdf>=1.26,<2`, and loads cleanly without security warnings.

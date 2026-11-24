@@ -204,6 +204,11 @@ def fresh_database(raw_test_db_url: str, test_db_name: str):
 
 
 @pytest.fixture
+def database_url(fresh_database) -> str:
+    return fresh_database["db_url"]
+
+
+@pytest.fixture
 async def db_session(fresh_database) -> AsyncGenerator[AsyncSession, None]:
     async_url = fresh_database["async_url"]
     engine = create_async_engine(async_url, connect_args=fresh_database["connect_args"])

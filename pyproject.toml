@@ -14,8 +14,10 @@ dependencies = [
     "httpx>=0.28.1",
     "protego>=0.7.0",
     "pydantic-settings>=2.16.3",
+    "pymupdf>=1.26,<2",
     "pypdf>=7.1.1",
     "sqlalchemy[asyncio]>=2.1.9",
+    "trafilatura>=2.4.0",
     "uvicorn[standard]>=0.54.0",
 ]
 
@@ -45,7 +47,7 @@ select = ["E", "F", "I", "B", "UP", "SIM"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-q"
+addopts = "-q --basetemp=.pytest_tmp"
 pythonpath = [".", "src"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"

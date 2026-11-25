@@ -10,10 +10,16 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from fastapi.testclient import TestClient
 
-from flutterfix.api.deps import get_db_session, get_repository
+from flutterfix.api.deps import (
+    get_db_session,
+    get_gateway,
+    get_repository,
+    get_usage_repo,
+)
 from flutterfix.api.main import create_app
 from flutterfix.config import Settings
 from flutterfix.db.repository import ALLOWED_FILTER_KEYS, InvalidFilterError
+from flutterfix.llm.gateway import FakeLLM, LLMGateway
 
 SAMPLE_DOCS = [
     {
@@ -100,12 +106,34 @@ def mock_session():
     return session
 
 
+class FakeUsage:
+    async def by_day(self, days=7):
+        return [
+            {
+                "day": "2026-11-25",
+                "calls": 3,
+                "errors": 1,
+                "fallbacks": 1,
+                "tokens_in": 300,
+                "tokens_out": 120,
+                "cost_inr": 0.0642,
+            }
+        ]
+
+
 @pytest.fixture
-def test_app(fake_repo, mock_session):
+def llm():
+    return FakeLLM()
+
+
+@pytest.fixture
+def test_app(fake_repo, mock_session, llm):
     settings = Settings(app_env="ci")
     app = create_app(settings)
     app.dependency_overrides[get_repository] = lambda: fake_repo
     app.dependency_overrides[get_db_session] = lambda: mock_session
+    app.dependency_overrides[get_gateway] = lambda: LLMGateway([llm])
+    app.dependency_overrides[get_usage_repo] = lambda: FakeUsage()
     return app
 
 

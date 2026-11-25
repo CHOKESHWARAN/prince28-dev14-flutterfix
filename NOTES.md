@@ -529,3 +529,39 @@ The initial Door 2 `git clone` into `data/raw/flutter-docs` failed because the f
 
 ### One thing that went wrong today, and how I fixed it
 On Windows 11 with Smart App Control (SAC) enabled, `pymupdf==1.28.2` threw an Application Control policy block when loading native `_mupdf.pyd`. Pinned `pymupdf==1.26.0` which has established reputation, satisfies `pymupdf>=1.26,<2`, and loads cleanly without security warnings.
+
+## D08 · LLM gateway
+
+- Primary: gemini-3.8-flash (Gemini) · fallback: openai/gpt-oss-20b (Groq)
+- First question on my laptop: first words after 1.15 s, total 2.65 s, tokens in 131 / out 94, cost Rs 0.042812
+- Same question on my live URL (second, awake request): first words after 1.28 s. Day 1 target: under 1.5 s
+
+### Tokens: English against Tamil
+
+| Message | tokens in |
+|---|---|
+| "Hi" (baseline: mostly my system prompt) | 131 |
+| The English sentence | 143 |
+| The same sentence in Tamil | 185 |
+
+- The Tamil message needs about 4.5 times the tokens of the English one (54 tokens vs 12 tokens over baseline).
+
+### What the model does without my documents
+
+- Question 6 ("Why does our app crash on the shop owner's phone?"): did it admit it can't know? Its exact words: "I am not sure why your app crashes on that specific phone without seeing the device logs or stack trace."
+- A detail it got wrong or invented (question → what it said → what is true): "How do I migrate FlatButton in Flutter 3.24?" → said to use `TextButton.icon` directly without noting theme inheritance changes in `TextButtonThemeData` → Flutter 3.24 deprecated old accent color cascades.
+- The off-topic question: did it decline in one sentence? Yes: "This product only answers questions about Flutter and Dart development."
+
+### Fallback and circuit breaker
+
+- With the primary broken: provider groq , fallback YES , first words after 0.42 s
+- The question at which "llm call gemini … error" stopped appearing in the log: number 4
+
+### The bill
+
+- /v1/usage today: calls 8 , errors 3 , fallbacks 4 , cost Rs 0.2854
+- Average per answered question: Rs 0.048 (my Day 1 target: under Rs 0.50)
+
+### One thing that went wrong today, and how I fixed it
+`tests/unit/conftest.py` had a local `client` fixture that overshadowed the root `tests/conftest.py` client overrides for `get_gateway` and `get_usage_repo`, causing `/v1/chat` unit tests to receive HTTP 503 instead of the configured FakeLLM. Injected `get_gateway` and `get_usage_repo` dependency overrides into `test_app` in `tests/unit/conftest.py` so all unit tests use FakeLLM predictably.
+

@@ -11,16 +11,16 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
-from flutterfix.config import get_settings
+from flutterfix.config import Settings, get_settings
 from flutterfix.db.url import build_asyncpg_db_url
 
 # Force pure Python mode on Windows to avoid DLL load issues with Cython C-extensions
 os.environ.setdefault("DISABLE_SQLALCHEMY_CEXT", "1")
 
 
-def create_engine_from_settings() -> AsyncEngine:
+def make_engine(settings: Settings | None = None) -> AsyncEngine:
     """Build the async SQLAlchemy engine using settings."""
-    settings = get_settings()
+    settings = settings or get_settings()
     raw_url = (
         settings.database_url.get_secret_value()
         if settings.database_url
@@ -35,13 +35,19 @@ def create_engine_from_settings() -> AsyncEngine:
     )
 
 
-engine = create_engine_from_settings()
+def make_sessionmaker(engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
+    """Build an async sessionmaker for the given engine."""
+    return async_sessionmaker(
+        bind=engine,
+        class_=AsyncSession,
+        expire_on_commit=False,
+    )
 
-AsyncSessionLocal = async_sessionmaker(
-    bind=engine,
-    class_=AsyncSession,
-    expire_on_commit=False,
-)
+
+create_engine_from_settings = make_engine
+engine = make_engine()
+
+AsyncSessionLocal = make_sessionmaker(engine)
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:

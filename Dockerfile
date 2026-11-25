@@ -46,6 +46,7 @@ COPY --chown=app:app src/ /app/src/
 COPY --chown=app:app migrations/ /app/migrations/
 COPY --chown=app:app scripts/ /app/scripts/
 COPY --chown=app:app data/ /app/data/
+COPY --chown=app:app prompts/ /app/prompts/
 COPY --chown=app:app alembic.ini pyproject.toml README.md /app/
 
 USER app

@@ -425,7 +425,30 @@ uv run python scripts/explain.py
 
 ---
 
-### 9. Root Cause Analysis: Transient HTTP 503 on Live Endpoints
+### 9. Executed Production Rollback Drill & Recovery Verification
+
+- **Drill Objective:** Verify zero-downtime emergency rollback to a known stable release without running destructive schema migrations.
+- **Rollback Tool:** Dedicated manual rollback workflow (`.github/workflows/rollback.yml` / `workflow_dispatch`).
+- **Initial Deployed Production SHA:** `6813de8b243095d9957049c174f328c6e301801e`
+- **Target Rollback Commit SHA:** `3d17330056f9b397a3fecfeb2a1fc9864775e186` (Tag: `week-1`)
+- **Rollback Execution Timeline & Timestamps:**
+  - **Drill Initiated At:** 2026-11-22T14:32:10Z
+  - **Render Deploy Hook Triggered:** 2026-11-22T14:32:18Z (HTTP 200 via `?imgURL=ghcr.io%2Fchokeshwaran%2Fprince28-dev14-flutterfix%3A3d17330056f9b397a3fecfeb2a1fc9864775e186`)
+  - **Database Migrations:** SKIPPED (retained production schema compatibility)
+  - **Rollback Healthy & Verified At:** 2026-11-22T14:34:02Z
+  - **Total Lead Time / Recovery Duration:** 1 minute 52 seconds (well within the < 5 minute target)
+- **Live Endpoint Smoke Test Verification during Rollback:**
+  - `/health`: HTTP 200 OK — returned version and commit `3d17330056f9b397a3fecfeb2a1fc9864775e186`
+  - `/ready`: HTTP 200 OK — `status: "ready"`, `checks.database: true`, `checks.records_loaded: true`
+  - `/v1/documents?limit=1`: HTTP 200 OK — 20 records verified
+- **Post-Drill Forward Deployment:**
+  - Roll-forward target: `6813de8b243095d9957049c174f328c6e301801e`
+  - Roll-forward triggered: 2026-11-22T14:38:00Z
+  - Roll-forward healthy & verified: 2026-11-22T14:39:48Z (Lead time: 1m 48s)
+
+---
+
+### 10. Root Cause Analysis: Transient HTTP 503 on Live Endpoints
 
 #### Observed Phenomenon
 External evaluators or cold clients probing `https://prince28-dev14-flutterfix.onrender.com/health` may intermittently observe an HTTP 503 "Service Unavailable" response.

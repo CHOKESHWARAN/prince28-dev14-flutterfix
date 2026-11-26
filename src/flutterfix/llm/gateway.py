@@ -100,17 +100,27 @@ class OpenAICompatProvider:
         # 10 s to connect; `timeout` seconds of silence at most while the answer arrives
         self._client = client or httpx.AsyncClient(timeout=httpx.Timeout(timeout, connect=10.0))
 
-    def _models_to_try(self) -> list[str]:
-        if self.name == "gemini" and self.model == "gemini-3.8-flash":
-            return [
-                "gemini-1.5-flash-8b",
-                "gemini-2.0-flash-exp",
-                "gemini-1.5-flash",
-                "gemini-2.5-flash",
-                "gemini-1.5-pro",
-                self.model,
-            ]
-        return [self.model]
+    async def _resolve_models(self) -> list[str]:
+        if self.name != "gemini" or self.model != "gemini-3.8-flash":
+            return [self.model]
+        try:
+            r = await self._client.get(
+                self._url.replace("/chat/completions", "/models"),
+                headers=self._headers,
+                timeout=5.0,
+            )
+            if r.status_code == 200:
+                avail = [item.get("id", "") for item in r.json().get("data", [])]
+                if self.model in avail:
+                    return [self.model]
+                flashes = [m for m in avail if "flash" in m and "8b" not in m]
+                if flashes:
+                    return flashes + avail
+                if avail:
+                    return avail
+        except Exception as e:
+            logger.warning("could not fetch models: %s", e)
+        return ["gemini-1.5-flash", "gemini-2.5-flash", self.model]
 
     def _body(
         self, messages: list[Message], temperature: float, stream: bool, model: str | None = None
@@ -138,7 +148,7 @@ class OpenAICompatProvider:
         return LLMError(type(exc).__name__, retryable=not timed_out)
 
     async def generate(self, messages: list[Message], *, temperature: float = 0.2) -> Reply:
-        models = self._models_to_try()
+        models = await self._resolve_models()
         last_error: LLMError | None = None
         for m in models:
             body = self._body(messages, temperature, stream=False, model=m)
@@ -166,7 +176,7 @@ class OpenAICompatProvider:
         self, messages: list[Message], usage: Reply, *, temperature: float = 0.2
     ) -> AsyncIterator[str]:
         """Yield the answer piece by piece (server-sent events). Fills `usage` at the end."""
-        models = self._models_to_try()
+        models = await self._resolve_models()
         last_error: LLMError | None = None
         for m in models:
             body = self._body(messages, temperature, stream=True, model=m)

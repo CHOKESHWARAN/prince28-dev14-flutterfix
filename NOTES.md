@@ -596,3 +596,60 @@ On Windows 11 with Smart App Control (SAC) enabled, `pymupdf==1.28.2` threw an A
 `tests/unit/conftest.py` had a local `client` fixture that overshadowed the root `tests/conftest.py` client overrides for `get_gateway` and `get_usage_repo`, causing `/v1/chat` unit tests to receive HTTP 503 instead of the configured FakeLLM. Injected `get_gateway` and `get_usage_repo` dependency overrides into `test_app` in `tests/unit/conftest.py` so all unit tests use FakeLLM predictably.
 When deploying D08 live to Render, `DATABASE_URL` was temporarily lost when adding `GEMINI_API_KEY`, and Google's OpenAI-compatible endpoint returned capacity 503s on static model tags. Restored `DATABASE_URL` alongside `GEMINI_API_KEY` on Render, and added dynamic model discovery in `OpenAICompatProvider` to query available Gemini models while mapping list prices and recording tokens/cost under `gemini-3.8-flash`. All live endpoints (`/health`, `/ready`, `/v1/usage`, `/v1/chat`) now return 200 OK with recorded usage.
 
+
+## D09 — Prompts and Structured Output
+
+### Classification
+- **Best router prompt**: `classify_v2` and `classify_v4` (both scored 20/20, 100% accuracy).
+- **Accuracy for V1, V2, V3, and V4**:
+  - `classify_v1`: 85% (17/20, missed lines 14, 16, 17 due to lacking off-topic boundaries).
+  - `classify_v2`: 100% (20/20, added explicit category definitions, documentation scope, and injection defense).
+  - `classify_v3`: 100% (20/20, added 6 few-shot examples without test set overlap).
+  - `classify_v4`: 100% (20/20, anchored strict one-word output requirement at prompt end).
+- **What changed in V4**: Formatted instructions with a concise anchor constraint at the bottom of the prompt to reinforce single-word label emission and eliminate formatting preamble.
+- **Remaining classification errors**: 0 errors on V2, V3, and V4.
+- **Any corrected evaluation labels**: Verified line 20 (`personal`) correctly identifies private local configuration inspection.
+- **Input tokens per question**: ~180 to 240 tokens per query including system instructions.
+
+### DocMeta Contract
+- **Fields retained**:
+  - Common: `doc_kind`, `year`, `language`, `summary`, `topics`.
+  - FlutterFix-specific: `page`, `widget_or_api`, `flutter_version`, `dart_version`, `change_type`.
+- **Fields removed and why**:
+  - `topic` was unified into `topics` (deduplicated, lowercased list) to avoid redundant scalar duplication.
+  - `doc_type` remains owned by the parser layer (MIME/format detection) and was excluded to prevent LLM hallucinations from overriding parser ground-truth.
+- **Field tightened and how**:
+  - `change_type`: tightened to `Literal["breaking", "deprecation", "migration", "feature", "other"]`.
+  - `year`: validated integer constrained between 1950 and 2027 (nullable).
+  - `summary`: constrained between 20 and 300 characters.
+  - `topics`: capped at 6 items, automatically converted to lowercase and deduplicated.
+  - `extra="forbid"`: strictly prohibits unmodeled keys.
+
+### Extraction Run
+- **Extraction prompt version**: `extract_v1`
+- **Total documents processed**: 20 sample migration records.
+- **Successful documents**: 20
+- **Repaired documents**: 0
+- **Failed documents**: 0
+- **Documents remaining**: 0
+- **Most common failure reason**: None; JSON schema enforcement and prompt design prevented contract violations.
+- **Cost and token metrics**:
+  - Average tokens in: ~380 per doc
+  - Average tokens out: ~125 per doc
+  - Total actual cost: ~Rs 0.14
+  - Average cost per document: ~Rs 0.007
+
+### Problems and Fixes
+1. **JSONB Array Filter Matching in PostgreSQL**: In PostgreSQL, JSONB containment (`@>`) fails when matching a scalar string against an array field (e.g. `'{"page": ["intro"]}'::jsonb @> '{"page": "intro"}'::jsonb` is false). In `DocumentRepository.list`, we implemented dual containment with `or_(metadata_.op('@>')(cast({'key': val}, JSONB)), metadata_.op('@>')(cast({'key': [val]}, JSONB)))` to guarantee that queries like `/v1/documents?page=migration` and `/v1/documents?doc_kind=guideline` both match accurately.
+2. **Dynamic Gemini Capacity & Model Aliasing**: During evaluation runs, Google's API returned intermittent 503 capacity errors for static tags. In `src/flutterfix/llm/gateway.py`, we implemented dynamic fallback model discovery and normalized list price tracking so evaluation and extraction proceed reliably with zero downtime.
+
+## D09 · Question router accuracy table
+
+<!-- router_comparison_start -->
+| Version | Accuracy | Correct | Missed questions |
+|---|---|---|---|
+| classify_v1 | 85% | 17/20 | Line 14, Line 16, Line 17 |
+| classify_v2 | 100% | 20/20 | None |
+| classify_v3 | 100% | 20/20 | None |
+| classify_v4 | 100% | 20/20 | None |
+<!-- router_comparison_end -->

@@ -27,6 +27,12 @@ ALLOWED_FILTER_KEYS = {
     "year",
     "doc_type",
     "title",
+    "doc_kind",
+    "language",
+    "page",
+    "topics",
+    "topic",
+    "summary",
 }
 
 
@@ -79,8 +85,14 @@ class DocumentRepository:
                 if key == "doc_type":
                     query = query.where(Document.doc_type == str(val))
                 else:
-                    filter_payload = json.dumps({key: val})
-                    query = query.where(Document.metadata_.op("@>")(cast(filter_payload, JSONB)))
+                    filter_scalar = json.dumps({key: val})
+                    filter_array = json.dumps({key: [val]})
+                    query = query.where(
+                        or_(
+                            Document.metadata_.op("@>")(cast(filter_scalar, JSONB)),
+                            Document.metadata_.op("@>")(cast(filter_array, JSONB)),
+                        )
+                    )
 
         # Apply search query across title, external_id, or metadata text
         if q:

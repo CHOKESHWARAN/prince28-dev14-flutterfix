@@ -101,33 +101,24 @@ class OpenAICompatProvider:
         self._client = client or httpx.AsyncClient(timeout=httpx.Timeout(timeout, connect=10.0))
 
     async def _resolve_models(self) -> list[str]:
-        if self.name != "gemini" or self.model != "gemini-3.8-flash":
-            return [self.model]
-        try:
-            r = await self._client.get(
-                self._url.replace("/chat/completions", "/models"),
-                headers=self._headers,
-                timeout=5.0,
-            )
-            if r.status_code == 200:
-                avail = [item.get("id", "") for item in r.json().get("data", [])]
-                if self.model in avail:
-                    return [self.model]
-                flashes = [m for m in avail if "flash" in m and "8b" not in m]
-                if flashes:
-                    return flashes + avail
-                if avail:
-                    return avail
-        except Exception as e:
-            logger.warning("could not fetch models: %s", e)
-        return ["gemini-1.5-flash", "gemini-2.5-flash", self.model]
+        if self.name == "gemini" and self.model == "gemini-3.8-flash":
+            return ["gemini-3.8-flash", "gemini-3.5-flash-lite"]
+        return [self.model]
 
     def _body(
-        self, messages: list[Message], temperature: float, stream: bool, model: str | None = None
+        self,
+        messages: list[Message],
+        temperature: float,
+        stream: bool,
+        model: str | None = None,
+        response_format: dict | None = None,
+        **extra,
     ) -> dict:
         body = {"model": model or self.model, "messages": messages, "temperature": temperature}
         if stream:
             body |= {"stream": True, "stream_options": {"include_usage": True}}
+        if response_format:
+            body["response_format"] = response_format
         return body
 
     @staticmethod
@@ -147,11 +138,13 @@ class OpenAICompatProvider:
         timed_out = isinstance(exc, httpx.TimeoutException)
         return LLMError(type(exc).__name__, retryable=not timed_out)
 
-    async def generate(self, messages: list[Message], *, temperature: float = 0.2) -> Reply:
+    async def generate(
+        self, messages: list[Message], *, temperature: float = 0.2, **options
+    ) -> Reply:
         models = await self._resolve_models()
         last_error: LLMError | None = None
         for m in models:
-            body = self._body(messages, temperature, stream=False, model=m)
+            body = self._body(messages, temperature, stream=False, model=m, **options)
             try:
                 response = await self._client.post(self._url, headers=self._headers, json=body)
             except httpx.TransportError as exc:
@@ -173,13 +166,13 @@ class OpenAICompatProvider:
         raise LLMError("no response", retryable=False)
 
     async def stream(
-        self, messages: list[Message], usage: Reply, *, temperature: float = 0.2
+        self, messages: list[Message], usage: Reply, *, temperature: float = 0.2, **options
     ) -> AsyncIterator[str]:
         """Yield the answer piece by piece (server-sent events). Fills `usage` at the end."""
         models = await self._resolve_models()
         last_error: LLMError | None = None
         for m in models:
-            body = self._body(messages, temperature, stream=True, model=m)
+            body = self._body(messages, temperature, stream=True, model=m, **options)
             try:
                 async with self._client.stream(
                     "POST", self._url, headers=self._headers, json=body

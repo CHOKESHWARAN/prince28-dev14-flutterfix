@@ -8,9 +8,42 @@ from flutterfix.llm.gateway import FakeLLM, LLMGateway
 
 # Tiny fake records: unit tests never touch a real database or your data file.
 SAMPLE = [
-    {"id": "001", "title": "Alpha guideline", "year": 2023, "kind": "guideline"},
-    {"id": "002", "title": "Beta circular", "year": 2024, "kind": "circular"},
-    {"id": "003", "title": "Gamma notice", "year": 2025, "kind": "circular"},
+    {
+        "id": "001",
+        "title": "Alpha guideline",
+        "year": 2023,
+        "kind": "guideline",
+        "doc_kind": "guideline",
+        "language": "en",
+        "category": "widget",
+        "doc_type": "widget",
+        "page": ["buttons", "migration"],
+        "topics": ["buttons", "styling"],
+    },
+    {
+        "id": "002",
+        "title": "Beta circular",
+        "year": 2024,
+        "kind": "circular",
+        "doc_kind": "circular",
+        "language": "en",
+        "category": "layout",
+        "doc_type": "layout",
+        "page": ["layout"],
+        "topics": ["flexbox"],
+    },
+    {
+        "id": "003",
+        "title": "Gamma notice",
+        "year": 2025,
+        "kind": "circular",
+        "doc_kind": "notice",
+        "language": "es",
+        "category": "core",
+        "doc_type": "core",
+        "page": ["changelog"],
+        "topics": ["release"],
+    },
 ]
 
 
@@ -21,11 +54,19 @@ class FakeRepo:
         self.rows = rows
 
     async def list(self, *, q, filters, limit, offset):
+        def matches(r, k, v):
+            val = r.get(k)
+            if val is None:
+                return False
+            if isinstance(val, list):
+                return str(v) in [str(x) for x in val]
+            return str(val) == str(v)
+
         rows = [
             r
             for r in self.rows
             if (not q or q.lower() in str(r).lower())
-            and all(str(r.get(k)) == v for k, v in filters.items())
+            and all(matches(r, k, v) for k, v in filters.items())
         ]
         return len(rows), rows[offset : offset + limit]
 

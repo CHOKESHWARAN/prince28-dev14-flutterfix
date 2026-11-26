@@ -14,7 +14,7 @@ import urllib.request
 
 import httpx
 
-EXPECTED_SHA = "987b59e6d04eea9405270661a12cfc75b9869dbd"
+EXPECTED_SHA = "94e41304bc083a3b566f998e10df3fd5750b11cf"
 BASE_URL = "https://prince28-dev14-flutterfix.onrender.com"
 
 

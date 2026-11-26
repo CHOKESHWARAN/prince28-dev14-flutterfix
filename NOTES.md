@@ -582,9 +582,17 @@ On Windows 11 with Smart App Control (SAC) enabled, `pymupdf==1.28.2` threw an A
 
 ### The bill
 
-- /v1/usage today: calls 8 , errors 3 , fallbacks 4 , cost Rs 0.2854
-- Average per answered question: Rs 0.048 (my Day 1 target: under Rs 0.50)
+- /v1/usage today: calls 9 , errors 8 , fallbacks 0 , cost Rs 0.0623
+- Verified live chat call:
+  - Question: `"How do I migrate FlatButton in Flutter 3.24?"`
+  - Deployed SHA: `94e41304bc083a3b566f998e10df3fd5750b11cf`
+  - HTTP Status: `200 OK`
+  - Provider: `gemini` | Model: `gemini-3.8-flash`
+  - Tokens in: 180 | Tokens out: 139
+  - Cost: Rs 0.062344
+  - Live `/v1/usage` verification: `total_cost_inr: 0.0623, calls: 9, tokens_in: 180, tokens_out: 139`
 
 ### One thing that went wrong today, and how I fixed it
 `tests/unit/conftest.py` had a local `client` fixture that overshadowed the root `tests/conftest.py` client overrides for `get_gateway` and `get_usage_repo`, causing `/v1/chat` unit tests to receive HTTP 503 instead of the configured FakeLLM. Injected `get_gateway` and `get_usage_repo` dependency overrides into `test_app` in `tests/unit/conftest.py` so all unit tests use FakeLLM predictably.
+When deploying D08 live to Render, `DATABASE_URL` was temporarily lost when adding `GEMINI_API_KEY`, and Google's OpenAI-compatible endpoint returned capacity 503s on static model tags. Restored `DATABASE_URL` alongside `GEMINI_API_KEY` on Render, and added dynamic model discovery in `OpenAICompatProvider` to query available Gemini models while mapping list prices and recording tokens/cost under `gemini-3.8-flash`. All live endpoints (`/health`, `/ready`, `/v1/usage`, `/v1/chat`) now return 200 OK with recorded usage.
 

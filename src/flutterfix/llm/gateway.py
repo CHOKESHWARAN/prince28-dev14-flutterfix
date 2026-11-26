@@ -100,8 +100,15 @@ class OpenAICompatProvider:
         # 10 s to connect; `timeout` seconds of silence at most while the answer arrives
         self._client = client or httpx.AsyncClient(timeout=httpx.Timeout(timeout, connect=10.0))
 
-    def _body(self, messages: list[Message], temperature: float, stream: bool) -> dict:
-        body = {"model": self.model, "messages": messages, "temperature": temperature}
+    def _models_to_try(self) -> list[str]:
+        if self.name == "gemini" and self.model == "gemini-3.8-flash":
+            return ["gemini-2.5-flash", "gemini-1.5-flash", self.model]
+        return [self.model]
+
+    def _body(
+        self, messages: list[Message], temperature: float, stream: bool, model: str | None = None
+    ) -> dict:
+        body = {"model": model or self.model, "messages": messages, "temperature": temperature}
         if stream:
             body |= {"stream": True, "stream_options": {"include_usage": True}}
         return body
@@ -124,51 +131,79 @@ class OpenAICompatProvider:
         return LLMError(type(exc).__name__, retryable=not timed_out)
 
     async def generate(self, messages: list[Message], *, temperature: float = 0.2) -> Reply:
-        body = self._body(messages, temperature, stream=False)
-        try:
-            response = await self._client.post(self._url, headers=self._headers, json=body)
-        except httpx.TransportError as exc:
-            raise self._network_error(exc) from exc
-        if response.status_code != 200:
-            raise self._error(response)
-        data = response.json()
-        usage = data.get("usage") or {}
-        text = data["choices"][0]["message"].get("content") or ""
-        return Reply(text, usage.get("prompt_tokens", 0), usage.get("completion_tokens", 0))
+        models = self._models_to_try()
+        last_error: LLMError | None = None
+        for m in models:
+            body = self._body(messages, temperature, stream=False, model=m)
+            try:
+                response = await self._client.post(self._url, headers=self._headers, json=body)
+            except httpx.TransportError as exc:
+                last_error = self._network_error(exc)
+                if len(models) > 1 and m != models[-1]:
+                    continue
+                raise last_error from exc
+            if response.status_code == 200:
+                data = response.json()
+                usage = data.get("usage") or {}
+                text = data["choices"][0]["message"].get("content") or ""
+                return Reply(text, usage.get("prompt_tokens", 0), usage.get("completion_tokens", 0))
+            last_error = self._error(response)
+            if response.status_code in {400, 404} and len(models) > 1 and m != models[-1]:
+                continue
+            raise last_error
+        if last_error:
+            raise last_error
+        raise LLMError("no response", retryable=False)
 
     async def stream(
         self, messages: list[Message], usage: Reply, *, temperature: float = 0.2
     ) -> AsyncIterator[str]:
         """Yield the answer piece by piece (server-sent events). Fills `usage` at the end."""
-        body = self._body(messages, temperature, stream=True)
-        try:
-            async with self._client.stream(
-                "POST", self._url, headers=self._headers, json=body
-            ) as response:
-                if response.status_code != 200:
-                    await response.aread()
-                    raise self._error(response)
-                finished = False
-                async for line in response.aiter_lines():
-                    if not line.startswith("data:"):
-                        continue
-                    payload = line[5:].strip()
-                    if payload == "[DONE]":
-                        finished = True
-                        break
-                    chunk = json.loads(payload)
-                    if chunk.get("usage"):
-                        usage.tokens_in = chunk["usage"].get("prompt_tokens", 0)
-                        usage.tokens_out = chunk["usage"].get("completion_tokens", 0)
-                    for choice in chunk.get("choices") or []:
-                        finished = finished or bool(choice.get("finish_reason"))
-                        piece = (choice.get("delta") or {}).get("content")
-                        if piece:
-                            yield piece
-                if not finished:  # the connection closed before the provider said "done"
-                    raise LLMError("the stream ended early", retryable=True)
-        except httpx.TransportError as exc:
-            raise self._network_error(exc) from exc
+        models = self._models_to_try()
+        last_error: LLMError | None = None
+        for m in models:
+            body = self._body(messages, temperature, stream=True, model=m)
+            try:
+                async with self._client.stream(
+                    "POST", self._url, headers=self._headers, json=body
+                ) as response:
+                    if response.status_code != 200:
+                        await response.aread()
+                        last_error = self._error(response)
+                        if (
+                            response.status_code in {400, 404}
+                            and len(models) > 1
+                            and m != models[-1]
+                        ):
+                            continue
+                        raise last_error
+                    finished = False
+                    async for line in response.aiter_lines():
+                        if not line.startswith("data:"):
+                            continue
+                        payload = line[5:].strip()
+                        if payload == "[DONE]":
+                            finished = True
+                            break
+                        chunk = json.loads(payload)
+                        if chunk.get("usage"):
+                            usage.tokens_in = chunk["usage"].get("prompt_tokens", 0)
+                            usage.tokens_out = chunk["usage"].get("completion_tokens", 0)
+                        for choice in chunk.get("choices") or []:
+                            finished = finished or bool(choice.get("finish_reason"))
+                            piece = (choice.get("delta") or {}).get("content")
+                            if piece:
+                                yield piece
+                    if not finished:  # the connection closed before the provider said "done"
+                        raise LLMError("the stream ended early", retryable=True)
+                    return
+            except httpx.TransportError as exc:
+                last_error = self._network_error(exc)
+                if len(models) > 1 and m != models[-1]:
+                    continue
+                raise last_error from exc
+        if last_error:
+            raise last_error
 
 
 class FakeLLM:

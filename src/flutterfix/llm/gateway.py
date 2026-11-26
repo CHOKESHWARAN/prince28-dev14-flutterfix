@@ -102,7 +102,7 @@ class OpenAICompatProvider:
 
     def _models_to_try(self) -> list[str]:
         if self.name == "gemini" and self.model == "gemini-3.8-flash":
-            return ["gemini-2.5-flash", "gemini-1.5-flash", self.model]
+            return ["gemini-1.5-flash", "gemini-2.5-flash", self.model]
         return [self.model]
 
     def _body(
@@ -148,7 +148,7 @@ class OpenAICompatProvider:
                 text = data["choices"][0]["message"].get("content") or ""
                 return Reply(text, usage.get("prompt_tokens", 0), usage.get("completion_tokens", 0))
             last_error = self._error(response)
-            if response.status_code in {400, 404} and len(models) > 1 and m != models[-1]:
+            if len(models) > 1 and m != models[-1]:
                 continue
             raise last_error
         if last_error:
@@ -170,11 +170,7 @@ class OpenAICompatProvider:
                     if response.status_code != 200:
                         await response.aread()
                         last_error = self._error(response)
-                        if (
-                            response.status_code in {400, 404}
-                            and len(models) > 1
-                            and m != models[-1]
-                        ):
+                        if len(models) > 1 and m != models[-1]:
                             continue
                         raise last_error
                     finished = False

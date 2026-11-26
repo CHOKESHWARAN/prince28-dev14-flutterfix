@@ -1,6 +1,6 @@
 """add page headings and parse_failures
 
-Revision ID: 0004_add_page_headings_and_parse_failures
+Revision ID: 0004_page_headings_parse_fail
 Revises: 0003_add_index_on_doc_type
 Create Date: 2026-11-24 13:30:00.000000
 
@@ -13,7 +13,7 @@ from alembic import op
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision: str = "0004_add_page_headings_and_parse_failures"
+revision: str = "0004_page_headings_parse_fail"
 down_revision: str | Sequence[str] | None = "0003_add_index_on_doc_type"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None

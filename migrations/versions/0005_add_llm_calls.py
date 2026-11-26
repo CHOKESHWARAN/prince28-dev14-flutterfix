@@ -1,7 +1,7 @@
 """add llm_calls
 
 Revision ID: 0005_add_llm_calls
-Revises: 0004_add_page_headings_and_parse_failures
+Revises: 0004_page_headings_parse_fail
 Create Date: 2026-11-25 12:45:00.000000
 
 """
@@ -13,7 +13,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "0005_add_llm_calls"
-down_revision: str | Sequence[str] | None = "0004_add_page_headings_and_parse_failures"
+down_revision: str | Sequence[str] | None = "0004_page_headings_parse_fail"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

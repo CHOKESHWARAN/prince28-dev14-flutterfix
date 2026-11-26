@@ -5,6 +5,12 @@ on:
     workflows: ["CI"]
     types: [completed]
     branches: ["main"]
+  workflow_dispatch:
+    inputs:
+      rollback_sha:
+        description: "Full commit SHA to rollback to (skips migrations, deploys existing image, and smoke-tests it)"
+        required: false
+        type: string
 
 concurrency:
   group: production
@@ -14,55 +20,109 @@ jobs:
   deploy:
     name: Deploy to Render and Verify
     runs-on: ubuntu-latest
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    timeout-minutes: 18
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
 
     steps:
-      - name: Trigger Render Deployment
-        if: env.RENDER_DEPLOY_HOOK != ''
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate deployment configuration
         env:
           RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
+          LIVE_URL: ${{ vars.LIVE_URL }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
-          echo "Triggering Render deployment..."
-          curl -s -f -X POST "$RENDER_DEPLOY_HOOK" > /dev/null || {
-            echo "Failed to trigger Render deploy hook."
+          MISSING=0
+          if [ -z "$RENDER_DEPLOY_HOOK" ]; then
+            echo "::error::Missing required repository secret: RENDER_DEPLOY_HOOK. Please configure your Render deploy hook URL in Settings > Secrets and variables > Actions > Secrets."
+            MISSING=1
+          fi
+          if [ -z "$LIVE_URL" ]; then
+            echo "::error::Missing required repository variable: LIVE_URL. Please configure the production service URL in Settings > Secrets and variables > Actions > Variables."
+            MISSING=1
+          fi
+          if [ -z "$DATABASE_URL" ] && [ -z "${{ inputs.rollback_sha }}" ]; then
+            echo "::error::Missing required repository secret: DATABASE_URL. Please configure the Neon PostgreSQL connection string in Settings > Secrets and variables > Actions > Secrets."
+            MISSING=1
+          fi
+          if [ $MISSING -ne 0 ]; then
+            echo "Deployment aborted due to missing configuration."
             exit 1
-          }
-          echo "Deploy hook triggered successfully."
+          fi
+          case "$LIVE_URL" in
+            https://*) ;;
+            *) echo "::error::LIVE_URL must use HTTPS."; exit 1 ;;
+          esac
+          echo "All required deployment secrets and variables are present."
 
-      - name: Await Deployment and Smoke Test
+      - name: Resolve Deployment Commit SHA
+        id: resolve-sha
+        run: |
+          if [ -n "${{ inputs.rollback_sha }}" ]; then
+            SHA="${{ inputs.rollback_sha }}"
+            echo "Rollback requested for commit: $SHA"
+          elif [ "${{ github.event_name }}" = "workflow_run" ]; then
+            SHA="${{ github.event.workflow_run.head_sha }}"
+            echo "CI triggered deployment for commit: $SHA"
+          else
+            SHA="${{ github.sha }}"
+            echo "Manual deployment for commit: $SHA"
+          fi
+          echo "deploy_sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "Selected deployment SHA: $SHA"
+
+      - name: Install uv and Python for Migrations
+        if: ${{ !inputs.rollback_sha }}
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          version: "latest"
+
+      - name: Set up Python 3.12
+        if: ${{ !inputs.rollback_sha }}
+        run: uv python install 3.12
+
+      - name: Run Database Migrations (Neon)
+        if: ${{ !inputs.rollback_sha }}
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          APP_ENV: production
+        run: |
+          echo "Executing pre-deployment database migrations against Neon PostgreSQL..."
+          uv sync --frozen --no-dev
+          uv run alembic upgrade head
+          echo "Migrations completed successfully."
+
+      - name: Trigger Render Deployment with Tested GHCR Image
+        env:
+          RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
+          DEPLOY_SHA: ${{ steps.resolve-sha.outputs.deploy_sha }}
+        run: |
+          REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          IMAGE_TAG="ghcr.io/${REPO_LOWER}:${DEPLOY_SHA}"
+          echo "Deploying exact image: $IMAGE_TAG"
+
+          ENCODED_TAG=$(python3 -c "import urllib.parse, sys; print(urllib.parse.quote(sys.argv[1]))" "$IMAGE_TAG")
+
+          if [[ "$RENDER_DEPLOY_HOOK" == *"?"* ]]; then
+            TARGET_URL="${RENDER_DEPLOY_HOOK}&imgURL=${ENCODED_TAG}"
+          else
+            TARGET_URL="${RENDER_DEPLOY_HOOK}?imgURL=${ENCODED_TAG}"
+          fi
+
+          echo "Calling deploy hook with exact imgURL..."
+          HTTP_CODE=$(curl --silent --show-error --max-time 30 -o /dev/null -w "%{http_code}" -X POST "$TARGET_URL")
+          if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
+            echo "::error::Render exact-image deployment failed with HTTP status: $HTTP_CODE"
+            exit 1
+          fi
+          echo "Render deployment triggered successfully (HTTP $HTTP_CODE)."
+
+      - name: Run Automated Smoke Tests
         env:
           LIVE_URL: ${{ vars.LIVE_URL }}
-          EXPECTED_SHA: ${{ github.event.workflow_run.head_sha }}
+          EXPECTED_SHA: ${{ steps.resolve-sha.outputs.deploy_sha }}
         run: |
-          TARGET_URL="${LIVE_URL:-https://prince28-dev14-flutterfix.onrender.com}"
-          echo "Target service URL: $TARGET_URL"
-          echo "Expected commit SHA: $EXPECTED_SHA"
-
-          echo "Waiting for deployment to become healthy..."
-          ATTEMPTS=0
-          MAX_ATTEMPTS=30
-          HEALTHY=0
-
-          while [ $ATTEMPTS -lt $MAX_ATTEMPTS ]; do
-            STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$TARGET_URL/health" || echo "000")
-            if [ "$STATUS" = "200" ]; then
-              HEALTHY=1
-              echo "Liveness check passed (HTTP 200)."
-              break
-            fi
-            echo "Attempt $((ATTEMPTS+1))/$MAX_ATTEMPTS: received HTTP $STATUS, retrying in 10s..."
-            sleep 10
-            ATTEMPTS=$((ATTEMPTS+1))
-          done
-
-          if [ $HEALTHY -ne 1 ]; then
-            echo "Error: Service failed to reach healthy state within timeout."
-            exit 1
-          fi
-
-          echo "Verifying readiness endpoint..."
-          READY_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$TARGET_URL/ready" || echo "000")
-          echo "/ready returned HTTP $READY_STATUS"
-          if [ "$READY_STATUS" != "200" ]; then
-            echo "Warning: /ready returned HTTP $READY_STATUS (check database connectivity)."
-          fi
+          echo "Executing smoke tests against $LIVE_URL (Expected SHA: $EXPECTED_SHA)..."
+          python3 scripts/smoke.py --url "$LIVE_URL" --expected-sha "$EXPECTED_SHA" --wait --max-retries 36 --delay 10

@@ -7,9 +7,11 @@ from fastapi import APIRouter, FastAPI
 
 from flutterfix.api.errors import register_error_handlers
 from flutterfix.api.middleware import request_context
-from flutterfix.api.routes import documents, health
+from flutterfix.api.routes import chat, documents, health
 from flutterfix.config import Settings, get_settings
-from flutterfix.db.session import dispose_engine
+from flutterfix.db.llm_calls import LlmCallRepository
+from flutterfix.db.session import AsyncSessionLocal, dispose_engine
+from flutterfix.llm.gateway import build_gateway
 from flutterfix.logging_setup import setup_logging
 
 logger = logging.getLogger("flutterfix")
@@ -23,6 +25,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         logger.info("application starting", extra={"env": settings.app_env})
+        app.state.system_prompt = (
+            (settings.prompts_dir / "chat_system_v1.md").read_text(encoding="utf-8").strip()
+        )
+
+        async def record_call(row: dict) -> None:
+            async with AsyncSessionLocal() as session:
+                await LlmCallRepository(session).record(row)
+
+        app.state.gateway = build_gateway(settings, recorder=record_call)
         yield
         logger.info("application shutting down; disposing db engine")
         await dispose_engine()
@@ -35,6 +46,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     v1 = APIRouter(prefix="/v1")
     v1.include_router(documents.router)
+    v1.include_router(chat.router)
     app.include_router(health.router)
     app.include_router(v1)
     return app

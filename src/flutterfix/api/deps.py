@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from flutterfix.config import Settings
 from flutterfix.db import session as db_session
+from flutterfix.db.llm_calls import LlmCallRepository
 from flutterfix.db.repository import DocumentRepository
 
 
@@ -31,3 +32,17 @@ def get_repository(
 SettingsDep = Annotated[Settings, Depends(get_app_settings)]
 RepoDep = Annotated[DocumentRepository, Depends(get_repository)]
 SessionDep = Annotated[AsyncSession, Depends(get_db_session)]
+
+
+def get_gateway(request: Request):
+    return request.app.state.gateway
+
+
+def get_usage_repository(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> LlmCallRepository:
+    return LlmCallRepository(session)
+
+
+GatewayDep = Annotated[object, Depends(get_gateway)]
+UsageDep = Annotated[LlmCallRepository, Depends(get_usage_repository)]

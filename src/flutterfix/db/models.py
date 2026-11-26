@@ -11,6 +11,7 @@ from sqlalchemy import (
     Index,
     Integer,
     MetaData,
+    Numeric,
     String,
     Text,
     UniqueConstraint,
@@ -122,3 +123,26 @@ gin_index = Index(
     postgresql_using="gin",
     postgresql_ops={"metadata": "jsonb_path_ops"},
 )
+
+
+class LlmCall(Base):
+    """One row per language model call."""
+
+    __tablename__ = "llm_calls"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    request_id: Mapped[str] = mapped_column(String(64), index=True)
+    provider: Mapped[str] = mapped_column(String(40))
+    model: Mapped[str] = mapped_column(String(80))
+    purpose: Mapped[str] = mapped_column(String(40), server_default="chat")
+    prompt_version: Mapped[str] = mapped_column(String(80), server_default="")
+    status: Mapped[str] = mapped_column(String(10))
+    error: Mapped[str] = mapped_column(Text, server_default="")
+    tokens_in: Mapped[int] = mapped_column(server_default="0")
+    tokens_out: Mapped[int] = mapped_column(server_default="0")
+    latency_ms: Mapped[int] = mapped_column(server_default="0")
+    cost_inr: Mapped[float] = mapped_column(Numeric(12, 6), server_default="0")
+    fallback_used: Mapped[bool] = mapped_column(server_default="false")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )

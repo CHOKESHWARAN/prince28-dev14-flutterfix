@@ -1,8 +1,12 @@
 # FlutterFix
 
+[![CI](https://github.com/CHOKESHWARAN/prince28-dev14-flutterfix/actions/workflows/ci.yml/badge.svg)](https://github.com/CHOKESHWARAN/prince28-dev14-flutterfix/actions/workflows/ci.yml)
+[![CD](https://github.com/CHOKESHWARAN/prince28-dev14-flutterfix/actions/workflows/cd.yml/badge.svg)](https://github.com/CHOKESHWARAN/prince28-dev14-flutterfix/actions/workflows/cd.yml)
+[![Live Service](https://img.shields.io/badge/Render-Live%20Production-brightgreen?logo=render)](https://prince28-dev14-flutterfix.onrender.com/health)
+
 A Flutter and Dart mentor that answers from official docs and breaking-changes pages for the user's Flutter version.
 
-**Status:** Day 4 Completed — Dockerized Development Environment, Separated Test Suites & CI.
+**Status:** Day 5 Completed — Production Cloud Deployment, Automated CD Pipeline, Zero-Downtime Rollouts, Smoke Testing & Continuous Monitoring.
 
 ---
 
@@ -231,3 +235,27 @@ To purge the local database volume and restart from a clean slate:
 ```bash
 docker compose down -v
 ```
+
+---
+
+## 17. Day 5 — Production Cloud Deployment & Continuous Delivery
+
+- **Live Production URL:** https://prince28-dev14-flutterfix.onrender.com
+- **Liveness Endpoint:** `GET https://prince28-dev14-flutterfix.onrender.com/health`
+  - Validates process liveness and dynamically reports the live git commit SHA via `RENDER_GIT_COMMIT`.
+- **Readiness Endpoint:** `GET https://prince28-dev14-flutterfix.onrender.com/ready`
+  - Validates production Neon PostgreSQL connectivity and verifies that documents are loaded.
+- **API Documentation:** https://prince28-dev14-flutterfix.onrender.com/docs
+- **Automated Smoke Test Suite:**
+  ```bash
+  # Standalone CLI
+  python scripts/smoke.py --url https://prince28-dev14-flutterfix.onrender.com
+
+  # Via Poe task
+  uv run poe smoke
+  ```
+- **CI/CD Architecture:**
+  - **CI:** Executes `lint and test` (lint, unit tests, PostgreSQL 17 + `pgvector` integration tests) and `build image` (GHCR image build on PRs, push on merge to `main`).
+  - **CD:** Automatically executes pre-deployment Neon database migrations, triggers Render deployment, and runs smoke tests.
+  - **Manual Rollback:** Dedicated manual `workflow_dispatch` trigger in `.github/workflows/cd.yml` accepting `rollback_sha` to deploy an existing image without running migrations.
+  - **Monitoring:** Monitored 24/7 with UptimeRobot HTTP(s) health check every 5 minutes on `/health`.

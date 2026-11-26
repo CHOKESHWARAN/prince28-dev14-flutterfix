@@ -102,7 +102,14 @@ class OpenAICompatProvider:
 
     def _models_to_try(self) -> list[str]:
         if self.name == "gemini" and self.model == "gemini-3.8-flash":
-            return ["gemini-1.5-flash", "gemini-2.5-flash", self.model]
+            return [
+                "gemini-1.5-flash-8b",
+                "gemini-2.0-flash-exp",
+                "gemini-1.5-flash",
+                "gemini-2.5-flash",
+                "gemini-1.5-pro",
+                self.model,
+            ]
         return [self.model]
 
     def _body(

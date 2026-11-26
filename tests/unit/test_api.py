@@ -98,6 +98,25 @@ def test_doc_type_filtering(client):
     assert items[0]["doc_type"] == "widget"
 
 
+def test_extracted_metadata_filtering(client):
+    # Test doc_kind
+    res = client.get("/v1/documents", params={"doc_kind": "guideline", "limit": 3})
+    assert res.status_code == 200
+    assert len(res.json()["items"]) == 1
+    assert res.json()["items"][0]["id"] == "001"
+
+    # Test language
+    res = client.get("/v1/documents", params={"language": "en", "limit": 3})
+    assert res.status_code == 200
+    assert len(res.json()["items"]) == 2
+
+    # Test array field matching (page contains 'migration')
+    res = client.get("/v1/documents", params={"page": "migration"})
+    assert res.status_code == 200
+    assert len(res.json()["items"]) == 1
+    assert res.json()["items"][0]["id"] == "001"
+
+
 def test_invalid_filter_name_is_400(client):
     response = client.get("/v1/documents", params={"unknown_filter": "value"})
     assert response.status_code == 400

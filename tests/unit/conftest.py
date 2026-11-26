@@ -28,7 +28,11 @@ SAMPLE_DOCS = [
         "topic_id": "flat-button",
         "category": "widget",
         "doc_type": "widget",
+        "doc_kind": "guideline",
+        "language": "en",
         "year": 2023,
+        "page": ["buttons", "migration"],
+        "topics": ["buttons", "styling"],
     },
     {
         "id": "002",
@@ -36,7 +40,11 @@ SAMPLE_DOCS = [
         "topic_id": "will-pop-scope",
         "category": "navigation",
         "doc_type": "navigation",
+        "doc_kind": "circular",
+        "language": "en",
         "year": 2024,
+        "page": ["navigation"],
+        "topics": ["navigation"],
     },
     {
         "id": "003",
@@ -44,7 +52,11 @@ SAMPLE_DOCS = [
         "topic_id": "sound-null-safety",
         "category": "language",
         "doc_type": "language",
+        "doc_kind": "notice",
+        "language": "es",
         "year": 2025,
+        "page": ["null-safety"],
+        "topics": ["dart"],
     },
 ]
 
@@ -68,7 +80,15 @@ class FakeDocumentRepository:
             for k, v in filters.items():
                 if k not in ALLOWED_FILTER_KEYS:
                     raise InvalidFilterError(f"Invalid filter parameter '{k}'")
-                results = [d for d in results if d.get(k) == v]
+
+                def _matches(doc_val: Any, expected: Any) -> bool:
+                    if doc_val is None:
+                        return False
+                    if isinstance(doc_val, list):
+                        return str(expected) in [str(x) for x in doc_val]
+                    return str(doc_val) == str(expected)
+
+                results = [d for d in results if _matches(d.get(k), v)]
 
         if q:
             needle = q.lower()

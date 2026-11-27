@@ -42,6 +42,16 @@ class Settings(BaseSettings):
     usd_inr: float = 95.0  # rupees per US dollar, for cost estimates
     prompts_dir: Path = Path("prompts")
 
+    # Queue & Background Ingestion (Day 10)
+    redis_url: str = "redis://localhost:6379/0"
+    manifest_file: Path = Path("data/manifest.jsonl")
+    admin_token: SecretStr = SecretStr("dev-admin-secret-token")
+    worker_in_api: bool = False
+    ingest_concurrency: int = 2
+    ingest_rpm: float = 12.0
+    ingest_job_timeout: int = 60
+    ingest_max_tries: int = 3
+
     @model_validator(mode="after")
     def resolve_git_sha(self) -> "Settings":
         if self.render_git_commit and (not self.git_sha or self.git_sha in {"dev", "local"}):

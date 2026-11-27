@@ -54,6 +54,7 @@ services:
     environment:
       APP_ENV: local
       DATABASE_URL: postgresql://app:app@db:5432/app
+      REDIS_URL: redis://redis:6379/0
       PORT: 8000
     ports:
       - "8000:8000"
@@ -70,6 +71,28 @@ services:
       timeout: 5s
       retries: 5
       start_period: 5s
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: flutterfix-worker
+    environment:
+      APP_ENV: local
+      DATABASE_URL: postgresql://app:app@db:5432/app
+      REDIS_URL: redis://redis:6379/0
+    command: >
+      arq flutterfix.workers.main.WorkerSettings
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    volumes:
+      - ./data:/app/data
     restart: unless-stopped
 
 volumes:

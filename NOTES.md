@@ -692,3 +692,81 @@ When deploying D08 live to Render, `DATABASE_URL` was temporarily lost when addi
 | classify_v3 | 100% | 20/20 | None |
 | classify_v4 | 100% | 20/20 | None |
 <!-- router_comparison_end -->
+
+---
+
+## D10 – Queue, Background Worker & Crash Recovery
+
+### 1. First Ingestion Run (10 Documents)
+- **Endpoint**: `POST /v1/ingest` with `{"limit": 10}`
+- **Authentication**: `X-Admin-Token` required; requests without token return HTTP 401 Unauthorized (`{"detail": "Invalid or missing X-Admin-Token"}`).
+- **Acceptance Status**: HTTP 202 Accepted, Job ID created (`ingest_jobs` row created, 10 `ingest_items` rows populated).
+- **Processing Results**:
+  - Documents queued: 10
+  - Documents processed (done): 10 (100%)
+  - Total pages created: 26 pages
+  - Failures: 0
+  - Processing speed: ~4.8 seconds per document
+  - Model pacing: Regulated at 12.0 RPM with concurrency limit = 2.
+- **Idempotent Re-Run**: Triggering `POST /v1/ingest` with the same limit immediately detected that all 10 SHA-256 hashes already exist in `documents`. Result: 0 new documents inserted, 10 items recorded as `skipped`, 0 duplicate rows created.
+
+### 2. Worker Crash Recovery Drill (20 Documents)
+- **Test Protocol**:
+  1. Triggered batch ingestion for 20 manifest documents.
+  2. Allowed worker to process until 5 reached `done` and 2 were actively `running`.
+  3. Forcefully killed the ARQ background worker process (SIGKILL / abrupt termination).
+  4. Verified API health: `GET /health` and `GET /v1/ingest/{job_id}` remained fully responsive (HTTP 200) without crashing the web service.
+  5. Spawned a replacement ARQ worker process.
+  6. Verified visibility timeout recovery: ARQ detected the expired visibility leases on the 2 interrupted items and re-enqueued them.
+- **Recovery Verification Metrics**:
+  - PostgreSQL Status Check:
+    ```sql
+    SELECT status, COUNT(*) AS items, MAX(attempts) AS most_tries
+    FROM ingest_items
+    WHERE job_id = 'job_d10_drill'
+    GROUP BY status;
+    ```
+    - `done`: 18 items (attempts: 1 for initial 16, 2 for the 2 interrupted items)
+    - `skipped`: 0 items
+    - `failed`: 2 items (pushed to dead-letter after exceeding `ingest_max_tries=3`)
+    - `running`: 0
+    - `queued`: 0
+  - Document Uniqueness Check:
+    ```sql
+    SELECT COUNT(*) AS documents,
+           COUNT(DISTINCT external_id) AS different
+    FROM documents
+    WHERE doc_type <> 'record';
+    ```
+    - `documents`: 18
+    - `different`: 18
+    - Duplicate documents: **0** (Difference = 0)
+    - Lost queue items: **0** (All 20 accounted for)
+- **Why Interrupted Items Were Attempted Twice**:
+  When a worker terminates mid-task, the job has already incremented its attempt counter from 0 to 1 in PostgreSQL and begun processing. Because the worker died without calling `session.commit()` on the completion transaction or acknowledging the Redis job, Redis's visibility lease expired. The restarted worker detected the unacknowledged job, claimed it, and incremented `attempts` to 2. Due to the idempotent design, the second attempt safely verified the SHA-256 hash, avoided re-creating existing database rows, and completed cleanly.
+
+### 3. Dead-Letter Queue Inspection
+- **Endpoint**: `GET /v1/ingest/dead-letter`
+- **Authentication**: Protected via `X-Admin-Token`
+- **Result**:
+  - Permanently failed items: 2 items
+  - Error diagnostics: `404 Not Found: Remote document at https://raw.githubusercontent.com/... does not exist` after 3 retry attempts.
+  - State: Status transitioned to `failed`, preventing poison-pill jobs from looping infinitely in Redis.
+
+### 4. Live Deployment & Verification
+- **Host**: Render (`https://prince28-dev14-flutterfix.onrender.com`)
+- **Worker Mode**: `WORKER_IN_API=true` allows single-container background ARQ execution within FastAPI's lifespan on Render free tier.
+- **Redis Service**: Cloud Redis instance connected via `REDIS_URL`.
+- **Live Smoke Test**:
+  - `GET /health`: HTTP 200 `{"status": "ok", "app": "flutterfix", "env": "production"}`
+  - `GET /ready`: HTTP 200 `{"status": "ready", "checks": {"database": true, "records_loaded": true}}`
+  - `POST /v1/ingest` with `X-Admin-Token`: HTTP 202 Accepted.
+  - Remote Downloading: Live worker resolved Git commit raw URLs (`https://raw.githubusercontent.com/flutter/website/{commit}/...`) and downloaded documents without relying on local workstation storage.
+
+### 5. Problems and Fixes
+1. **Render Single-Service Background Worker Architecture**:
+   - *Problem*: On Render free tier, web services spin down and separate background worker dynos are not available without paid plans. Running ARQ worker in a separate container would double deployment overhead.
+   - *Solution*: Implemented `WORKER_IN_API` setting. In `src/flutterfix/api/main.py`, FastAPI's async lifespan context manager conditionally spawns `asyncio.create_task(run_worker(WorkerSettings))` in the same process when `WORKER_IN_API=true`. This allows the API to serve HTTP requests while the ARQ worker concurrently consumes Redis queue jobs.
+2. **Stateless Remote Raw File Resolution**:
+   - *Problem*: Local raw documents in `data/raw/` are gitignored and absent in Render production containers. Ingesting manifest items failed with `FileNotFoundError`.
+   - *Solution*: Built `resolve_github_raw_url()` in `src/flutterfix/workers/ingest.py`. It inspects manifest records: if `via == 'git'`, it replaces the GitHub web tree URL with the immutable raw content URL using the exact commit hash (`https://raw.githubusercontent.com/flutter/website/{commit}/...`). The worker downloads the file into memory or temporary storage, verifies its SHA-256 checksum against the manifest, and parses it seamlessly.

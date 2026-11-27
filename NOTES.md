@@ -625,7 +625,7 @@ When deploying D08 live to Render, `DATABASE_URL` was temporarily lost when addi
   - `topics`: capped at 6 items, automatically converted to lowercase and deduplicated.
   - `extra="forbid"`: strictly prohibits unmodeled keys.
 
-### Extraction Run
+### Extraction Run (Sample Records Baseline)
 - **Extraction prompt version**: `extract_v1`
 - **Total documents processed**: 20 sample migration records.
 - **Successful documents**: 20
@@ -638,6 +638,45 @@ When deploying D08 live to Render, `DATABASE_URL` was temporarily lost when addi
   - Average tokens out: ~125 per doc
   - Total actual cost: ~Rs 0.14
   - Average cost per document: ~Rs 0.007
+
+### D09 Corpus Extraction (Flutter Documentation Corpus)
+
+- **Execution Command / Settings**: `uv run python scripts/extract_metadata.py --manifest --limit 50 --rpm 15`
+- **Corpus Denominator**: 726 downloaded Flutter documentation files (`data/manifest.jsonl`)
+- **Run Date**: 2026-11-27
+- **Prompt Version**: `extract_v1`
+- **Model Used**: `gemini-3.8-flash`
+- **Records Selected / Processed**: 50
+- **Skipped Records (Already Processed)**: 0
+- **Successful Extractions**: 50 (100%)
+- **Repaired Documents**: 3 (6%)
+  - `breaking-changes-c88daca6.html`: Repaired on attempt 2 (`flutter_version` list exceeded 8 items; model truncated to 8 most relevant releases).
+  - `buttons-ff1d1d10.html`: Repaired on attempt 2 (`widget_or_api` list exceeded 8 items; model trimmed to top 8 button widgets).
+  - `add-to-app/ios/index.md`: Repaired on attempt 2 (JSON syntax quotation anomaly).
+- **Failed Documents**: 0 (0%)
+- **Token Usage**:
+  - Tokens In: 105,505 (average 2,110 tokens per document)
+  - Tokens Out: 7,083 (average 141 tokens per document)
+- **Financial Cost**:
+  - Total Cost: Rs 10.0405
+  - Average Cost per Document: Rs 0.2008
+- **Elapsed Duration**: 285 seconds (~4.75 minutes)
+- **Output Artifact**: `data/extracted_metadata.jsonl` (50 validated JSON records)
+
+#### Verified Extracted Field Counts (Across 50 Corpus Documents)
+
+| Extracted Field | Count with Field Present | Coverage Percentage | Notes |
+|---|---|---|---|
+| `doc_kind` | 50 / 50 | 100% | Breakdown: 23 tutorial, 19 guideline, 5 reference, 1 list, 1 notice, 1 other |
+| `language` | 50 / 50 | 100% | All 50 verified as `en` |
+| `summary` | 50 / 50 | 100% | 50 valid summaries meeting 20–300 character constraint |
+| `topics` | 50 / 50 | 100% | Deduplicated and lowercased, max 6 items |
+| `page` | 49 / 50 | 98% | Document subheadings and section breadcrumbs |
+| `widget_or_api` | 35 / 50 | 70% | Extracted specific Flutter/Dart APIs when present |
+| `change_type` | 11 / 50 | 22% | Migration, deprecation, and breaking change classifications |
+| `flutter_version` | 9 / 50 | 18% | Release version tags (e.g. Flutter 2.0, 3.7, 3.24) |
+| `year` | 9 / 50 | 18% | Explicit copyright/publication years (2021, 2025, 2026); null when omitted |
+| `dart_version` | 0 / 50 | 0% | General Flutter docs in this slice omit explicit Dart language version |
 
 ### Problems and Fixes
 1. **JSONB Array Filter Matching in PostgreSQL**: In PostgreSQL, JSONB containment (`@>`) fails when matching a scalar string against an array field (e.g. `'{"page": ["intro"]}'::jsonb @> '{"page": "intro"}'::jsonb` is false). In `DocumentRepository.list`, we implemented dual containment with `or_(metadata_.op('@>')(cast({'key': val}, JSONB)), metadata_.op('@>')(cast({'key': [val]}, JSONB)))` to guarantee that queries like `/v1/documents?page=migration` and `/v1/documents?doc_kind=guideline` both match accurately.
